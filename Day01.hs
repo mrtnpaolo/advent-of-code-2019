@@ -1,5 +1,8 @@
 module Main where
 
-main = print =<< part1 <$> readFile "input.txt"
+main =
+  do masses <- map (read :: String -> Integer) . lines <$> readFile "input.txt"
+     print $ sum . map fuel $ masses
+     print $ sum . map (sum . takeWhile (>0) . iterate fuel) . map fuel $ masses
 
-part1 = sum . map (subtract 2 . (`div` 3)) . map (read :: String -> Int) . lines
+fuel = subtract 2 . (`div` 3)
