@@ -1,7 +1,9 @@
 module Main where
 
+import Advent
+
 main =
-  do masses <- map (read :: String -> Integer) . lines <$> readFile "inputs/input01.txt"
+  do masses <- map (read :: String -> Integer) . lines <$> getRawInput 1
      print $ sum . map fuel $ masses
      print $ sum . map (sum . takeWhile (>0) . iterate fuel) . map fuel $ masses
 
