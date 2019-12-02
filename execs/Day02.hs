@@ -2,7 +2,7 @@ module Main (main) where
 
 import Advent
 
-import Data.List.Split
+import Data.List.Split (chunksOf)
 
 import Data.IntMap.Strict (IntMap, (!))
 import qualified Data.IntMap.Strict as M
