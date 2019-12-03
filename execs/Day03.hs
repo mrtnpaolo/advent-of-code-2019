@@ -3,7 +3,6 @@ module Main (main) where
 import Advent
 
 import Data.Function
-import Data.Foldable
 import Control.Arrow ((&&&))
 
 import Data.Map (Map)
@@ -38,7 +37,7 @@ main =
         fromString ('R':n) = read n `replicate` (succ,id)
         fromString ('D':n) = read n `replicate` (id,pred)
         fromString ('L':n) = read n `replicate` (pred,id)
-        fromString _       = undefined
+        fromString _       = error "unhandled input"
 
     toPoints :: Trace -> [Point]
     toPoints = scanl (\(x,y) (f,g) -> (f x,g y)) (0,0)
@@ -68,21 +67,15 @@ part2 s1 s2 = minimum . M.elems $ s
     s = M.unionWith (+) s1' s2'
 
 dumpWires :: Wire -> Wire -> IO ()
-dumpWires w1 w2 =
-  do forM_ [ym..yM] $ \y ->
-       do forM_ [xm..xM] $ \x ->
-            do putStr (at (x,y))
-          putStr "\n"
+dumpWires w1 w2 = putStrLn `mapM_` [ [ at (x,y) | x <- [xm..xM] ] | y <- [ym..yM] ]
   where
-    (xm1, xM1) = (minimum &&& maximum) (fst `S.map` w1)
-    (ym1, yM1) = (minimum &&& maximum) (snd `S.map` w1)
-    (xm2, xM2) = (minimum &&& maximum) (fst `S.map` w2)
-    (ym2, yM2) = (minimum &&& maximum) (snd `S.map` w2)
+    ((xm1, xM1),(ym1, yM1)) = (minimum &&& maximum) w1
+    ((xm2, xM2),(ym2, yM2)) = (minimum &&& maximum) w2
     (xm,xM) = (min xm1 xm2,max xM1 xM2)
     (ym,yM) = (min ym1 ym2,max yM1 yM2)
 
-    at (0,0) = "O"
-    at coord | coord `S.member` w1 && coord `S.member` w2 = "X"
-             | coord `S.member` w1 = "1"
-             | coord `S.member` w2 = "2"
-             | otherwise           = "."
+    at (0,0) = 'O'
+    at c | c `S.member` w1 && c `S.member` w2 = 'X'
+         | c `S.member` w1                    = '1'
+         |                    c `S.member` w2 = '2'
+         | otherwise                          = '.'
