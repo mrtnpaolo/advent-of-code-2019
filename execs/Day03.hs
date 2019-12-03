@@ -2,60 +2,56 @@ module Main (main) where
 
 import Advent
 
-import Data.Ord
 import Data.Function
-import Data.Bifunctor
 import Data.Foldable
 import Control.Arrow ((&&&))
 
-import Data.Map (Map, (!))
+import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
 
 type Move = (Int -> Int,Int -> Int)
 type Trace = [Move]
+
 type Point = (Int,Int)
+
 type Wire = Set Point
 type Signal = Map Point Int
 
 main :: IO ()
 main =
-  do [t1,t2] <- map concat . map parse . lines <$> getRawInput 3
-     -- dumpWires w1 w2
-     let w1 = fromTrace t1
-     let w2 = fromTrace t2
-     print $ part1 w1 w2
-     let s1 = toSignal t1
-     let s2 = toSignal t2
-     print $ part2 s1 s2
+  do [t1,t2] <- map parseTrace . lines <$> getRawInput 3
+     print $ (part1 `on` toWire) t1 t2
+     print $ (part2 `on` toSignal) t1 t2
 
   where
 
-    parse = map fromString . words . map sep
-
-    sep ',' = ' '
-    sep  x  =  x
-
-    fromString :: String -> Trace
-    fromString ('U':n) = read n `replicate` (id,succ)
-    fromString ('R':n) = read n `replicate` (succ,id)
-    fromString ('D':n) = read n `replicate` (id,pred)
-    fromString ('L':n) = read n `replicate` (pred,id)
-
-    fromTrace :: Trace -> Wire
-    fromTrace = S.fromList . scanl app (0,0)
+    parseTrace :: String -> Trace
+    parseTrace = concat . map fromString . words . map sep
       where
-        app (x,y) (f,g) = (f x, g y)
+        sep ',' = ' '
+        sep  x  =  x
+
+        fromString :: String -> Trace
+        fromString ('U':n) = read n `replicate` (id,succ)
+        fromString ('R':n) = read n `replicate` (succ,id)
+        fromString ('D':n) = read n `replicate` (id,pred)
+        fromString ('L':n) = read n `replicate` (pred,id)
+        fromString _       = undefined
+
+    toPoints :: Trace -> [Point]
+    toPoints = scanl (\(x,y) (f,g) -> (f x,g y)) (0,0)
+
+    toWire :: Trace -> Wire
+    toWire = S.fromList . toPoints
 
     toSignal :: Trace -> Signal
-    toSignal t = M.fromSet atFirstVisit coords
+    toSignal t = M.fromSet lowest (S.fromList points)
       where
-        signal = zip (scanl app (0,0) t) [0..]
-        coords = S.fromList $ map fst signal
-        atFirstVisit coord = minimum [ s | (c,s) <- signal, c == coord]
-        app (x,y) (f,g) = (f x, g y)
-
+        points = toPoints t
+        signal = zip points [0..]
+        lowest coord = minimum [ s | (c,s) <- signal, c == coord ]
 
 part1 :: Wire -> Wire -> Int
 part1 w1 w2 = minManhattan $ w1 `S.intersection` w2
