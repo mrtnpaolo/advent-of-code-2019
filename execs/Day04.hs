@@ -1,56 +1,38 @@
 module Main (main) where
 
 import Advent
-
-import Data.List (nub)
 import Data.Bifunctor (second)
--- import Data.Function
--- import Control.Arrow ((&&&))
-
-import Data.Map.Strict (Map)
+import Control.Applicative ((<**>))
 import qualified Data.Map.Strict as M
--- import Data.Set (Set)
--- import qualified Data.Set as S
 
 main :: IO ()
 main =
-  do print $ part1 136818 685979
-     print $ part2 136818 685979
-
-part1 :: Int -> Int -> Int
-part1 lower higher = length [ undefined
-                            | x <- range
-                            , crit1 x
-                            , crit2 x
-                            , crit3 x
-                            , crit4 x
-                            ]
+  do [lower,higher] <- map read . words . map sep <$> getRawInput 4
+     print $ part1 [lower..higher]
+     print $ part2 [lower..higher]
   where
-    range = [lower..higher]
-    crit1 = (6==) . length . show
-    crit2 = const True
-    crit3 = any (uncurry (==)) . (zip <*> tail) . show
-    crit4 = all (uncurry (<=)) . (zip <*> tail) . show
+    sep '-' = ' '
+    sep x   = x
 
-part2 :: Int -> Int -> Int
-part2 lower higher = length [ undefined
-                            | x <- range
-                            , crit1 x
-                            , crit2 x
-                            , crit3 x
-                            , crit4 x
-                            ]
+part1 :: [Int] -> Int
+part1 = length . filter (\x -> and $ pure x <**> criterions) . map show
   where
-    range = [lower..higher]
-    crit1 = (6==) . length . show
-    crit2 = const True
-    crit3 n = (>0) . M.size $ candidates
-      where
-        digits = show n
-        counts = M.fromListWith (++) . map (second pure) . rle $ digits
-        candidates = M.filter ([2] ==) counts
-    crit4 = all (uncurry (<=)) . (zip <*> tail) . show
+    criterions =
+      [ any (uncurry (==)) . adjacents
+      , all (uncurry (<=)) . adjacents ]
 
+part2 :: [Int] -> Int
+part2 = length . filter (\x -> and $ pure x <**> criterions) . map show
+  where
+    criterions =
+      [ all (uncurry (<=)) . adjacents
+      , not . M.null . M.filter ([2] ==) . M.fromListWith (++) . map (second pure) . rle ]
+
+adjacents :: [a] -> [(a,a)]
+adjacents = tail <**> zip
+
+-- | Run Length Encoding
+rle :: Eq a => [a] -> [(a,Int)]
 rle [] = []
 rle ns@(n:_) = let (xs,ys) = span (n==) ns
                in (n,length xs) : rle ys
