@@ -1,9 +1,8 @@
 module Main (main) where
 
 import Advent
-import Data.Bifunctor (second)
+import Data.List (group)
 import Control.Applicative ((<**>))
-import qualified Data.Map.Strict as M
 
 main :: IO ()
 main =
@@ -20,21 +19,18 @@ satisfying :: [Criterion] -> [Int] -> Int
 satisfying cs = length . filter (\x -> and $ pure (show x) <**> cs)
 
 part1 :: [Criterion]
-part1 =
-  [ any (uncurry (==)) . adjacents
-  , all (uncurry (<=)) . adjacents ]
+part1 = [ nondecreasing, any (1 <) . runs ]
 
 part2 :: [Criterion]
-part2 =
-  [ all (uncurry (<=)) . adjacents
-  , not . M.null . M.filter ([2] ==) . M.fromListWith (++) . map (second pure) . rle ]
+part2 = [ nondecreasing, any (2 ==) . runs ]
+
+nondecreasing :: Ord a => [a] -> Bool
+nondecreasing = all (uncurry (<=)) . adjacents
 
 -- | List of pairs of adjacent elements
 adjacents :: [a] -> [(a,a)]
-adjacents = tail <**> zip
+adjacents = zip <*> tail
 
--- | Run Length Encoding
-rle :: Eq a => [a] -> [(a,Int)]
-rle [] = []
-rle ns@(n:_) = let (xs,ys) = span (n==) ns
-               in (n,length xs) : rle ys
+-- | The runs part of run-length encoding
+runs :: Eq a => [a] -> [Int]
+runs = map length . group
