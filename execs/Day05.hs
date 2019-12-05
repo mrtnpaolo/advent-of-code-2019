@@ -16,6 +16,7 @@ main :: IO ()
 main =
   do mem <- fromInts . map read . words . map sep <$> getRawInput 5
      print $ last (run mem [1])
+     print $ last (run mem [5])
   where
     sep ',' = ' '
     sep x = x
@@ -107,12 +108,12 @@ ps @@ ms = zipWith (\case 0 -> Pos; 1 -> Imm; _ -> error "unknown mode") ms ps
 exec :: IntCode -> [Mode Int] {- ^ modal parameters -} -> Op ()
 exec instr@Inp   (a:_)     = ask >>= saveAt a >> next instr
 exec instr@Out   (a:_)     = at a >>= RWS.tell . pure >> next instr
--- exec instr@JT    (a:b:_)   = error "exec: JT"
--- exec instr@JF    (a:b:_)   = error "exec: JF"
+exec instr@JT    (a:b:_)   = at a >>= \n -> if n /= 0 then at b >>= \m -> setIp m else next instr
+exec instr@JF    (a:b:_)   = at a >>= \n -> if n == 0 then at b >>= \m -> setIp m else next instr
 exec instr@Sum   (a:b:c:_) = (+) <$> at a <*> at b >>= saveAt c >> next instr
 exec instr@Mul   (a:b:c:_) = (*) <$> at a <*> at b >>= saveAt c >> next instr
--- exec instr@Less  (a:b:c:_) = error "exec: Less"
--- exec instr@Equal (a:b:c:_) = error "exec: Equal"
+exec instr@Less  (a:b:c:_) = (<)  <$> at a <*> at b >>= \cond -> saveAt c (if cond then 1 else 0) >> next instr
+exec instr@Equal (a:b:c:_) = (==) <$> at a <*> at b >>= \cond -> saveAt c (if cond then 1 else 0) >> next instr
 exec       Halt  _         = error "exec: Halt"
 exec       Unk   _         = error "exec: Unk"
 
