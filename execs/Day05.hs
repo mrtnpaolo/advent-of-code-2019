@@ -1,137 +1,158 @@
 module Main (main) where
 
-import Debug.Trace
-
 import Advent
 
-import Data.IntMap.Strict (IntMap, (!), (!?))
+import Data.List (unfoldr)
+
+import Data.IntMap.Strict (IntMap, (!?))
 import qualified Data.IntMap.Strict as M
+
+import Control.Monad.Trans.RWS.CPS (RWS)
+import qualified Control.Monad.Trans.RWS.CPS as RWS
+
+-- import Debug.Trace
 
 main :: IO ()
 main =
   do mem <- fromInts . map read . words . map sep <$> getRawInput 5
-     -- (print :: Int -> IO ()) `mapM_` raw
-     print $ run mem
+     print $ last (run mem [1])
   where
     sep ',' = ' '
     sep x = x
 
--- | Non-Mode params are always positional (because they are write locations)
+-- | Parameter modes
+data Mode a
+  = Pos a -- position mode (pointer)
+  | Imm a -- immediate mode (value)
+
+naked :: Mode a -> a
+naked (Pos a) = a
+naked (Imm a) = a
+
+instance Show a => Show (Mode a) where
+  showsPrec _ (Pos x) = shows x
+  showsPrec _ (Imm x) = showChar '*' . shows x
+
+-- | IntCode
 data IntCode
-  = Halt
-  | Sum (Mode Int) (Mode Int) Int
-  | Mul (Mode Int) (Mode Int) Int
-  | Inp Int
-  | Out (Mode Int)
-  | JT (Mode Int) (Mode Int)     -- jump-if-true
-  | JF (Mode Int) (Mode Int)     -- jump-if-false
-  | Less (Mode Int) (Mode Int) Int -- less than
-  | Equal (Mode Int) (Mode Int) Int -- equal
+  = Unk | Sum | Mul | Inp | Out | JT | JF | Less | Equal | Halt
   deriving (Show)
 
-data Mode a = Pos a | Imm a
-  deriving (Show)
+-- | IntCode instruction from opcode
+code :: Int -> IntCode
+code  1 = Sum
+code  2 = Mul
+code  3 = Inp
+code  4 = Out
+code  5 = JT
+code  6 = JF
+code  7 = Less
+code  8 = Equal
+code 99 = Halt
+code  _ = Unk
 
+-- | IntCode instruction lengths
+len :: IntCode -> Int
+len Unk   = 1
+len Sum   = 4
+len Mul   = 4
+len Inp   = 2
+len Out   = 2
+len JT    = 3
+len JF    = 3
+len Less  = 4
+len Equal = 4
+len Halt  = 1
 
-readInstruction :: [Int]
-                -> (IntCode,Int) {- ^ (instruction, instruction length) -}
-readInstruction [] = error "cannot decode empty instruction"
-readInstruction (99:_) = ( Halt, 1 )
-readInstruction (n:ns)
-  | [1,ma,mb,_] <- decode n = let [a,b,pc] = take 3 ns in ( Sum (mode ma a) (mode mb b) pc, 4 )
-  | [2,ma,mb,_] <- decode n = let [a,b,pc] = take 3 ns in ( Mul (mode ma a) (mode mb b) pc, 4 )
-  | [3,_,_,_]   <- decode n = let [pa]     = take 1 ns in ( Inp pa, 2 )
-  | [4,ma,_,_]  <- decode n = let [a]      = take 1 ns in ( Out (mode ma a), 2 )
-  | [5,ma,mb,_] <- decode n = let [a,b]    = take 2 ns in ( JT (mode ma a) (mode mb b), 3 )
-  | [6,ma,mb,_] <- decode n = let [a,b]    = take 2 ns in ( JF (mode ma a) (mode mb b), 3 )
-  | [7,ma,mb,_] <- decode n = let [a,b,pc] = take 3 ns in ( Less (mode ma a) (mode mb b) pc, 4 )
-  | [8,ma,mb,_] <- decode n = let [a,b,pc] = take 3 ns in ( Equal (mode ma a) (mode mb b) pc, 4 )
-  | otherwise = error $ "cannot decode instruction: " ++ show n
-  where
-    mode :: Int -> Int -> Mode Int
-    mode 0 = Pos
-    mode 1 = Imm
-    mode _ = error "unsupported memory mode"
-
-
-
+-- | Machine's memory
 type Mem = IntMap Int
 
 fromInts :: [Int] -> Mem
 fromInts = M.fromAscList . zip [0..]
 
-run :: Mem -> Int {- ^ value of memory location 0 at the end of the program -}
-run m
-  = go m 0 (fetch 0 m)
+-- | Running a program
+run :: Mem -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
+run mem ins = outs
   where
-    go m _ (Halt,_) = m ! 0
-    go m i (op,len) = let (m',jump) = step m (traceShowId op)
-                          i' | jump /= 0 = jump
-                             | otherwise = i+len
-                      in go m' i' (fetch i' m')
+    (_,outs) = RWS.execRWS go undefined (Machine { _mem = mem, _ip = 0, _ins = ins })
 
-    fetch :: Int -> Mem -> (IntCode,Int)
-    fetch i = readInstruction . drop i . M.elems
+    go = do ~(ip,(opcode,modes),params) <- fetch
+            case opcode of
+              Unk  -> error $ "unknown instruction: opcode=" ++ show opcode ++ " (ip=" ++ show ip ++ ")"
+              Halt -> pure ()
+              _    -> exec opcode (params @@ modes) >> go
 
+-- | Fetch the instruction pointer and the decoded instruction
+fetch :: Op (Int,(IntCode,[Int]),[Int]) -- {- ^ (IP, decoded istruction, parameters) -}
+fetch
+  = do ip <- RWS.gets _ip
+       ~(encoded:params) <- RWS.gets (drop ip . M.elems . _mem)
+       pure (ip,decode encoded,params)
 
-
--- | Parameter lookup via the correct mode
--- Memory access can create new elements in memory!
-(!~) :: Mem -> Mode Int -> (Mem,Int)
-m !~ (Pos n) | Just x <- m !? n = (m,x)
-             | otherwise        = (M.insert n 0 m,0)
-m !~ (Imm n) = (m,n)
-
-
-step :: Mem -> IntCode -> (Mem,Int) {- ^ resulting memory, optional nonzero jump instruction pointer -}
-step m (Sum a b pc) = ( M.insert pc (a' + b') m'', 0 )
+-- | Decode an instruction into its IntCode and parameter modes
+decode :: Int -> (IntCode,[Int])
+decode n = (opcode,modes)
   where
-    (m' ,a') = m  !~ a
-    (m'',b') = m' !~ b
-step m (Mul a b pc) = ( M.insert pc (a' * b') m'', 0 )
-  where
-    (m' ,a') = m  !~ a
-    (m'',b') = m' !~ b
-step m (Inp pa) = ( M.insert pa 5 {- XXX: thermal radiator controller -} m, 0 )
-step m (Out ma) = ( trace ("Out: " ++ (show $ snd $ m !~ ma)) m, 0 )
-step m (JT a b) = ( m, if 0 /= snd (m !~ a) then snd (m !~ b) else 0 )
-step m (JF a b) = ( m, if 0 == snd (m !~ a) then snd (m !~ b) else 0 )
-step m (Less a b pc) = ( M.insert pc v m'', 0 )
-  where
-    (m' ,a') = m  !~ a
-    (m'',b') = m' !~ b
-    v | a' < b' = 1 | otherwise = 0
-step m (Equal a b pc) = ( M.insert pc v m'', 0 )
-  where
-    (m' ,a') = m  !~ a
-    (m'',b') = m' !~ b
-    v | a' == b' = 1 | otherwise = 0
-step _ Halt        = error "executing Halt"
+    (m,r) = n `divMod` 100
+    opcode = code r
+    modes  = unfoldr (Just . swap . (`divMod` 10)) m
+      where
+        swap (x,y) = (y,x)
 
+-- | Decorate parameters with their respective modes
+(@@) :: [Int] {- ^ parameters -} -> [Int] {- ^ modes -} -> [Mode Int]
+ps @@ ms = zipWith (\case 0 -> Pos; 1 -> Imm; _ -> error "unknown mode") ms ps
 
+-- | Execute one Intcode operation
+exec :: IntCode -> [Mode Int] {- ^ modal parameters -} -> Op ()
+exec instr@Inp   (a:_)     = ask >>= saveAt a >> next instr
+exec instr@Out   (a:_)     = at a >>= RWS.tell . pure >> next instr
+-- exec instr@JT    (a:b:_)   = error "exec: JT"
+-- exec instr@JF    (a:b:_)   = error "exec: JF"
+exec instr@Sum   (a:b:c:_) = (+) <$> at a <*> at b >>= saveAt c >> next instr
+exec instr@Mul   (a:b:c:_) = (*) <$> at a <*> at b >>= saveAt c >> next instr
+-- exec instr@Less  (a:b:c:_) = error "exec: Less"
+-- exec instr@Equal (a:b:c:_) = error "exec: Equal"
+exec       Halt  _         = error "exec: Halt"
+exec       Unk   _         = error "exec: Unk"
 
+-- | IntCode machine state
+data Machine = Machine { _mem :: Mem, _ip :: Int, _ins :: [Int] }
 
+-- | IntCode machine operation
+type OpEnv = ()
+type OpLog = [Int]
+type OpState = Machine
+type Op = RWS OpEnv OpLog OpState
 
+-- | Read a modal parameter
+at :: Mode Int -> Op Int
+at (Imm x) = pure x
+at (Pos px)
+  = do mx <- RWS.gets ((!? px) . _mem)
+       case mx of
+         Nothing -> RWS.modify (\m -> m { _mem = M.insert px 0 (_mem m) }) *> pure 0
+         Just x  -> {- trace ("reading " ++ show x ++ " from memory location " ++ show px) $ -} pure x
 
+-- | Write to a modal parameter
+saveAt :: Mode Int -> Int -> Op ()
+saveAt mx n
+  = do let x = naked mx
+       -- traceM ("saving " ++ show n ++ " at memory location " ++ show x)
+       RWS.modify (\m -> m { _mem = M.insert x n (_mem m) })
 
--- what the hell are the instructions @_@
+-- | Consume one input number
+ask :: Op Int
+ask = RWS.state (\m -> let (x:xs) = _ins m in (x, m { _ins = xs }))
 
--- | 0 = Position Mode = pointer
---   1 = Immediate Mode = value
-decode :: Int -> [Int]
-decode = map snd . take 4 . iterate ((`divMod` 10) . fst) . (`divMod` 100)
+-- | Increment the instruction pointer
+incrIp :: Int -> Op ()
+incrIp n = RWS.gets _ip >>= setIp . (n +)
 
-test_decode :: Bool
-test_decode = and $ zipWith (==)
-  [ decode 1002, decode 1  ]
-  [ [2,0,1,0]  , [1,0,0,0] ]
+-- | Set the instruction pointer
+setIp :: Int -> Op ()
+setIp n = RWS.modify (\m -> m { _ip = n })
 
-
--- writes are never to an immediate mode parameter
-
--- ip += instruction length (can be diff than 4)
--- support negative integers
-
--- one input (1 = air conditioner)
--- many outputs (delta from correct, 0 is correct)
--- diagnostic code (whatever)
+-- | Advance the instruction pointer to the next instruction
+next :: IntCode -> Op ()
+next = incrIp . len
