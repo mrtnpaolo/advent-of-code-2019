@@ -11,8 +11,6 @@ import qualified Data.IntMap.Strict as M
 import Control.Monad.Trans.RWS.CPS (RWS)
 import qualified Control.Monad.Trans.RWS.CPS as RWS
 
--- import Debug.Trace
-
 main :: IO ()
 main =
   do mem <- fromInts . map read . words . map sep <$> getRawInput 5
@@ -107,15 +105,37 @@ ps @@ ms = zipWith (\case 0 -> Pos; 1 -> Imm; _ -> error "unknown mode") ms ps
 
 -- | Execute one Intcode operation
 exec :: IntCode -> [Mode Int] {- ^ modal parameters -} -> Op ()
-exec instr@Inp   (a:_)     = ask >>= saveAt a >> next instr
-exec instr@Out   (a:_)     = at a >>= RWS.tell . pure >> next instr
-exec instr@JT    (a:b:_)   = at a >>= \n -> if n /= 0 then at b >>= \m -> setIp m else next instr
-exec instr@JF    (a:b:_)   = at a >>= \n -> if n == 0 then at b >>= \m -> setIp m else next instr
-exec instr@Sum   (a:b:c:_) = (+) <$> at a <*> at b >>= saveAt c >> next instr
-exec instr@Mul   (a:b:c:_) = (*) <$> at a <*> at b >>= saveAt c >> next instr
-exec instr@Less  (a:b:c:_) = (<)  <$> at a <*> at b >>= \cond -> saveAt c (if cond then 1 else 0) >> next instr
-exec instr@Equal (a:b:c:_) = (==) <$> at a <*> at b >>= \cond -> saveAt c (if cond then 1 else 0) >> next instr
+
+exec instr@Inp   (a:_)     = do set a =<< ask
+                                next instr
+
+exec instr@Out   (a:_)     = do RWS.tell . pure =<< get a
+                                next instr
+
+exec instr@JT    (a:b:_)   = do n <- get a
+                                if n /= 0
+                                  then setIp =<< get b
+                                  else next instr
+
+exec instr@JF    (a:b:_)   = do n <- get a
+                                if n == 0
+                                  then setIp =<< get b
+                                  else next instr
+
+exec instr@Sum   (a:b:c:_) = do set c =<< (+) <$> get a <*> get b
+                                next instr
+
+exec instr@Mul   (a:b:c:_) = do set c =<< (*) <$> get a <*> get b
+                                next instr
+
+exec instr@Less  (a:b:c:_) = do set c =<< fmap fromEnum ((<) <$> get a <*> get b)
+                                next instr
+
+exec instr@Equal (a:b:c:_) = do set c =<< fmap fromEnum ((==) <$> get a <*> get b)
+                                next instr
+
 exec       Halt  _         = error "exec: Halt"
+
 exec       Unk   _         = error "exec: Unk"
 
 -- | IntCode machine state
@@ -128,20 +148,20 @@ type OpState = Machine
 type Op = RWS OpEnv OpLog OpState
 
 -- | Read a modal parameter
-at :: Mode Int -> Op Int
-at (Imm x)  = pure x
-at (Pos px) = RWS.gets (fromMaybe (error "memory access out of bounds") . (!? px) . _mem)
+get :: Mode Int -> Op Int
+get (Imm x)  = pure x
+get (Pos px) = RWS.gets (fromMaybe (error "memory access out of bounds") . (!? px) . _mem)
 
 -- | Write to a modal parameter
-saveAt :: Mode Int -> Int -> Op ()
-saveAt mx n
-  = do let x = naked mx
-       -- traceM ("saving " ++ show n ++ " at memory location " ++ show x)
-       RWS.modify (\m -> m { _mem = M.insert x n (_mem m) })
+set :: Mode Int -> Int -> Op ()
+set mx n = RWS.modify (\m -> m { _mem = M.insert (naked mx) n (_mem m) })
 
 -- | Consume one input number
 ask :: Op Int
-ask = RWS.state (\m -> let (x:xs) = _ins m in (x, m { _ins = xs }))
+ask = RWS.state $ \m ->
+  case (_ins m) of
+    []     -> error "starving for input"
+    (x:xs) -> (x, m { _ins = xs })
 
 -- | Increment the instruction pointer
 incrIp :: Int -> Op ()
