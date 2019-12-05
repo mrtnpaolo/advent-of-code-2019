@@ -16,12 +16,17 @@ main =
     sep ',' = ' '
     sep x = x
 
+-- | Non-Mode params are always positional (because they are write locations)
 data IntCode
   = Halt
-  | Sum (Mode Int) (Mode Int) (Mode Int)
-  | Mul (Mode Int) (Mode Int) (Mode Int)
-  | Inp (Mode Int)
+  | Sum (Mode Int) (Mode Int) Int
+  | Mul (Mode Int) (Mode Int) Int
+  | Inp Int
   | Out (Mode Int)
+  | JT (Mode Int) (Mode Int)     -- jump-if-true
+  | JF (Mode Int) (Mode Int)     -- jump-if-false
+  | LT (Mode Int) (Mode Int) Int -- less than
+  | EQ (Mode Int) (Mode Int) Int -- equal
   deriving (Show)
 
 data Mode a = Pos a | Imm a
@@ -32,10 +37,10 @@ readInstruction :: [Int]
                 -> (IntCode,Int) {- ^ (instruction, instruction length) -}
 readInstruction (99:_) = ( Halt, 1 )
 readInstruction (n:ns)
-  | [1,ma,mb,mc] <- decode n = let [a,b,c] = take 3 ns in ( Sum (mode ma a) (mode mb b) (mode mc c), 4 )
-  | [2,ma,mb,mc] <- decode n = let [a,b,c] = take 3 ns in ( Mul (mode ma a) (mode mb b) (mode mc c), 4 )
-  | [3,ma,_,_]   <- decode n = let [a]     = take 1 ns in ( Inp (mode ma a), 2 )
-  | [4,ma,_,_]   <- decode n = let [a]     = take 1 ns in ( Out (mode ma a), 2 )
+  | [1,ma,mb,_] <- decode n = let [a,b,pc] = take 3 ns in ( Sum (mode ma a) (mode mb b) pc, 4 )
+  | [2,ma,mb,_] <- decode n = let [a,b,pc] = take 3 ns in ( Mul (mode ma a) (mode mb b) pc, 4 )
+  | (3:_)       <- decode n = let [pa]     = take 1 ns in ( Inp pa, 2 )
+  | [4,ma,_,_]  <- decode n = let [a]      = take 1 ns in ( Out (mode ma a), 2 )
   | otherwise = error $ "cannot decode instruction: " ++ show n
   where
     mode :: Int -> Int -> Mode Int
@@ -73,18 +78,15 @@ m !~ (Imm n) = (m,n)
 
 
 step :: Mem -> IntCode -> Mem
-step _ (Sum _ _ (Imm _)) = error "cannot write Sum to immediate parameter"
-step _ (Mul _ _ (Imm _)) = error "cannot write Mul to immediate parameter"
-step m (Sum a b (Pos c)) = M.insert c (a' + b') m''
+step m (Sum a b pc) = M.insert pc (a' + b') m''
   where
     (m' ,a') = m  !~ a
     (m'',b') = m' !~ b
-step m (Mul a b (Pos c)) = M.insert c (a' * b') m''
+step m (Mul a b pc) = M.insert pc (a' * b') m''
   where
     (m' ,a') = m  !~ a
     (m'',b') = m' !~ b
-step _ (Inp (Imm _)) = error "cannot write Inp to immediate parameter"
-step m (Inp (Pos a)) = M.insert a 1 m
+step m (Inp pa) = M.insert pa 1 m
 step m (Out ma) = trace ("Out: " ++ (show $ snd $ m !~ ma)) m
 
 step _ Halt        = error "executing Halt"
