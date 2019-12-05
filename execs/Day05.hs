@@ -3,6 +3,7 @@ module Main (main) where
 import Advent
 
 import Data.List (unfoldr)
+import Data.Maybe (fromMaybe)
 
 import Data.IntMap.Strict (IntMap, (!?))
 import qualified Data.IntMap.Strict as M
@@ -128,12 +129,8 @@ type Op = RWS OpEnv OpLog OpState
 
 -- | Read a modal parameter
 at :: Mode Int -> Op Int
-at (Imm x) = pure x
-at (Pos px)
-  = do mx <- RWS.gets ((!? px) . _mem)
-       case mx of
-         Nothing -> RWS.modify (\m -> m { _mem = M.insert px 0 (_mem m) }) *> pure 0
-         Just x  -> {- trace ("reading " ++ show x ++ " from memory location " ++ show px) $ -} pure x
+at (Imm x)  = pure x
+at (Pos px) = RWS.gets (fromMaybe (error "memory access out of bounds") . (!? px) . _mem)
 
 -- | Write to a modal parameter
 saveAt :: Mode Int -> Int -> Op ()
