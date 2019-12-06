@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Advent
+import Data.Char (ord)
 import Data.Tree
 import Data.Graph
 import Control.Arrow ((***))
@@ -28,8 +29,9 @@ main =
 
     toPair [    xs ,   ys ] = ( hash xs , hash ys )
 
-    hash [x]     = 2 + fromEnum x - fromEnum 'A'
-    hash [a,b,c] = fromEnum a * 10000 + fromEnum b * 100 + fromEnum c
+    hash [x]     = 3 + ord x
+    hash [a,b,c] = ord a * 10000 + ord b * 100 + ord c
+
 
 part1 :: Graph -> Vertex -> Int
 part1 g name = sum . zipWith (\n xs -> n * length xs) [0..] . levels . head . dfs g $ [name]
