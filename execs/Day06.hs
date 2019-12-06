@@ -2,6 +2,8 @@ module Main (main) where
 
 import Advent
 import Data.Char (ord)
+import Data.List (findIndex)
+import Data.Maybe (fromJust)
 import Data.Tree
 import Data.Graph
 import Control.Arrow ((***))
@@ -41,7 +43,7 @@ part2 g from to = abs (depth from - depth connection) + abs (depth to - depth co
   where
     lvls = levels . head . dfs g $ [0]
     connection = head $ connections g [from,to]
-    depth name = sum $ zipWith (\n lvl -> if name `elem` lvl then n else 0) [0..] lvls
+    depth v = fromJust $ findIndex (elem v) lvls
 
 -- | Filter the graph for vertices connecting the endpoints, depth-most first
 connections :: Graph -> [Vertex] {- ^ endpoints -} -> [Vertex]
