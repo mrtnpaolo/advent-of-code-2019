@@ -68,23 +68,12 @@ effectuate (Input f)    (x:xs) = effectuate (f x) xs
 -- | Turn a machine into its effect
 eval :: Machine -> Effect
 eval m =
-  case op of
-
+  case (peek m) of
     Halt -> Stop
-
-    Out  -> let ( m', [out] ) = RWS.execRWS (exec op (ps @@ ms)) undefined m
-            in Output out (eval m')
-
-    Inp  -> Input $ \n ->
-              let m' = m { _ins = _ins m ++ [n] }
-                  ( m'', _ ) = RWS.execRWS (exec op (ps @@ ms)) undefined m'
-              in eval m''
-
-    _    -> let ( m' , _ ) = RWS.execRWS (exec op (ps @@ ms)) undefined m
-            in eval m'
-
-  where
-    ( ( _,(op,ms),ps ) , _ , _ ) = RWS.runRWS fetch undefined m
+    Out  -> let  ( m', Just out ) = runOp m undefined  in  Output out (eval m')
+    Inp  -> Input $ \x ->
+            let  ( m', Nothing  ) = runOp m x          in  eval m'
+    _    -> let  ( m', Nothing  ) = runOp m undefined  in  eval m'
 
 -- $ Machine
 
@@ -100,6 +89,12 @@ data Machine = Machine { _mem :: Mem, _ip :: Int, _ins :: [Int] }
 -- | Load memory into a machine
 load :: Mem -> Machine
 load mem = Machine { _mem = mem, _ip = 0, _ins = [] }
+
+-- | Peek at the current operation
+peek :: Machine -> IntCode
+peek m = fst . decode . head . drop ip . M.elems . _mem $ m
+  where
+    ip = _ip m
 
 -- $ IntCode
 
@@ -147,8 +142,20 @@ len Less  = 4
 len Equal = 4
 len Halt  = 1
 
+-- | Decode an instruction into its IntCode and parameter modes
+decode :: Int -> (IntCode,[Int])
+decode n = (opcode,modes)
+  where
+    (m,r) = n `divMod` 100
+    opcode = code r
+    modes  = unfoldr (Just . swap . (`divMod` 10)) m
+      where
+        swap (x,y) = (y,x)
+
+-- $ IntCode machine
+
 -- | IntCode machine operation
-type OpEnv   = ()
+type OpEnv   = Int
 type OpLog   = [Int]
 type OpState = Machine
 type Op      = RWS OpEnv OpLog OpState
@@ -160,19 +167,19 @@ fetch
        ~(encoded:params) <- RWS.gets (drop ip . M.elems . _mem)
        pure (ip,decode encoded,params)
 
--- | Decode an instruction into its IntCode and parameter modes
-decode :: Int -> (IntCode,[Int])
-decode n = (opcode,modes)
-  where
-    (m,r) = n `divMod` 100
-    opcode = code r
-    modes  = unfoldr (Just . swap . (`divMod` 10)) m
-      where
-        swap (x,y) = (y,x)
-
 -- | Decorate parameters with their respective modes
 (@@) :: [Int] {- ^ parameters -} -> [Int] {- ^ modes -} -> [Mode Int]
 ps @@ ms = zipWith (\case 0 -> Pos; 1 -> Imm; _ -> error "unknown mode") ms ps
+
+-- | Execute one IntCode operation
+
+runOp :: Machine -> Int -> (Machine,Maybe Int {- ^ Output -})
+runOp m x =
+  case RWS.execRWS (exec op (ps @@ ms)) x m of
+    ( m', []    ) -> ( m', Nothing )
+    ( m', (x:_) ) -> ( m', Just x  )
+  where
+    ( ( _,(op,ms),ps ) , _ , _ ) = RWS.runRWS fetch undefined m
 
 -- | Execute one Intcode operation
 exec :: IntCode -> [Mode Int] {- ^ modal parameters -} -> Op ()
@@ -218,12 +225,9 @@ get (Pos px) = RWS.gets (fromMaybe (error "memory access out of bounds") . (!? p
 set :: Mode Int -> Int -> Op ()
 set mx n = RWS.modify (\m -> m { _mem = M.insert (naked mx) n (_mem m) })
 
--- | Consume one input number
+-- | Read the input
 ask :: Op Int
-ask = RWS.state $ \m ->
-  case (_ins m) of
-    []     -> error "starving for input"
-    (x:xs) -> (x, m { _ins = xs })
+ask = RWS.ask
 
 -- | Increment the instruction pointer
 incrIp :: Int -> Op ()
