@@ -1,9 +1,10 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Main (main) where
 
 import Advent
 
 import Data.List (unfoldr, permutations)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe)
 
 import Data.IntMap.Strict (IntMap, (!?))
 import qualified Data.IntMap.Strict as M
@@ -11,99 +12,96 @@ import qualified Data.IntMap.Strict as M
 import Control.Monad.Trans.RWS.CPS (RWS)
 import qualified Control.Monad.Trans.RWS.CPS as RWS
 
-import Data.Sequence (Seq)
-import qualified Data.Sequence as S
-
-import Debug.Trace
-
 main :: IO ()
 main =
   do mem <- fromInts . map read . words . map sep <$> getRawInput 7
-     -- print $ part1 mem
-     -- putStrLn "test 0: 9,8,7,6,5 -> 139629729"
-     -- print $ feedback2 t0 [9,8,7,6,5]
-     -- putStrLn "test 1: 9,7,8,5,6 -> 18216"
-     -- print $ feedback2 t1 [9,7,8,5,6]
-     -- print $ part2 t0
-     -- print $ part2 t1
+     print $ part1 mem
      print $ part2 mem
   where
     sep ',' = ' '
     sep x = x
-    t0 = fromInts [3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5]
-    t1 = fromInts [3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,1005,55,26,1001,54,-5,54,1105,1,12,1,53,54,53,1008,54,0,55,1001,55,1,55,2,53,55,53,4,53,1001,56,-1,56,1005,56,6,99,0,0,0,0,10]
 
 part1 :: Mem -> Int
-part1 mem =
-  maximum [ thrusters mem a b c d e | [a,b,c,d,e] <- permutations [0..4] ]
+part1 mem = maximum [ thrusters mem phases | phases <- permutations [0..4] ]
 
-thrusters mem pa pb pc pd pe = e_o
-  where [a_o] = run mem [pa,0]
-        [b_o] = run mem [pb,a_o]
-        [c_o] = run mem [pc,b_o]
-        [d_o] = run mem [pd,c_o]
-        [e_o] = run mem [pe,d_o]
+thrusters :: Mem -> [Int] -> Int
+thrusters mem [a,b,c,d,e] = e'
+  where [a'] = run mem [a,0 ]
+        [b'] = run mem [b,a']
+        [c'] = run mem [c,b']
+        [d'] = run mem [d,c']
+        [e'] = run mem [e,d']
 
 part2 :: Mem -> Int
-part2 mem =
-  maximum [ last $ last $ feedback2 mem phases | phases <- permutations [5..9] ]
+part2 mem = maximum [ last $ last $ feedback mem phases | phases <- permutations [5..9] ]
 
--- feedback mem pa pb pc pd pe = go ms 0
---   where
---     ms = load mem <$> S.fromList [[pa,0], [pb], [pc], [pd], [pe]]
---     go ms i =
---       case (run' m) of
---         ( Halt , _  , outs ) | i == length ms - 1 -> trace ("[m"++show i++"] halted " ++ show outs) $  outs
---                              | otherwise          -> go ms i'
---         ( Out  , m' , outs ) -> go (feed outs) i'
---       where
---         m = ms `S.index` i
---         i' = succ i `mod` length ms
---         m' = ms `S.index` i'
---         feed ins = S.adjust (\m -> m { _ins = _ins m ++ ins }) i' ms
+feedback :: Mem -> [Int] {- ^ Phases -} -> [[Int]]
+feedback mem [pa,pb,pc,pd,pe] = outs
+  where
+    [a,b,c,d,e] = effectuate . eval . load <$> replicate 5 mem
+
+    outs = let a' = a (pa:0:e')
+               b' = b (pb:a')
+               c' = c (pc:b')
+               d' = d (pd:c')
+               e' = e (pe:d')
+           in [a',b',c',d',e']
+
+-- | Running a program
+run :: Mem -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
+run = effectuate . eval . load
+
+-- $ Effects
 
 data Effect
   = Output Int Effect
   | Input (Int -> Effect)
   | Stop
 
-run'' :: Machine -> Effect
-run'' m =
+-- | Compute the outputs of an effect with the given list of inputs
+effectuate :: Effect -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
+effectuate Stop         _      = []
+effectuate (Output n e) ins    = n : effectuate e ins
+effectuate (Input _)    []     = error "starved"
+effectuate (Input f)    (x:xs) = effectuate (f x) xs
+
+-- | Turn a machine into its effect
+eval :: Machine -> Effect
+eval m =
   case op of
+
+    Halt -> Stop
+
     Out  -> let ( m', [out] ) = RWS.execRWS (exec op (ps @@ ms)) undefined m
-            in Output out (run'' m')
+            in Output out (eval m')
+
     Inp  -> Input $ \n ->
               let m' = m { _ins = _ins m ++ [n] }
-                  ( m'', outs ) = RWS.execRWS (exec op (ps @@ ms)) undefined m'
-              in run'' m''
-    Halt -> Stop
+                  ( m'', _ ) = RWS.execRWS (exec op (ps @@ ms)) undefined m'
+              in eval m''
+
     _    -> let ( m' , _ ) = RWS.execRWS (exec op (ps @@ ms)) undefined m
-            in run'' m'
+            in eval m'
+
   where
-    ( (ip,(op,ms),ps), m', _ ) = RWS.runRWS fetch undefined m
+    ( ( _,(op,ms),ps ) , _ , _ ) = RWS.runRWS fetch undefined m
 
-effectuate :: Effect -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
-effectuate Stop _ = []
-effectuate (Output n e) ins = n : effectuate e ins
-effectuate (Input _) [] = error "starving"
-effectuate (Input f) (x:xs) = effectuate (f x) xs
+-- $ Machine
 
-feedback2 mem [pa,pb,pc,pd,pe] = outs
-  where
+-- | Machine's memory
+type Mem = IntMap Int
 
-    ms :: [Machine]
-    ms = replicate 5 (load mem) -- <$> [[], [pb], [pc], [pd], [pe]]
-    es :: [Effect]
-    es = map run'' ms
-    fs :: [ [Int] -> [Int] ]
-    fs = map effectuate es
-    -- outs :: [Int]
-    outs = let oa = (fs!!0) (pa:0:oe)
-               ob = (fs!!1) (pb:oa)
-               oc = (fs!!2) (pc:ob)
-               od = (fs!!3) (pd:oc)
-               oe = (fs!!4) (pe:od)
-           in [oa,ob,oc,od,oe]
+fromInts :: [Int] -> Mem
+fromInts = M.fromAscList . zip [0..]
+
+-- | Machine state
+data Machine = Machine { _mem :: Mem, _ip :: Int, _ins :: [Int] }
+
+-- | Load memory into a machine
+load :: Mem -> Machine
+load mem = Machine { _mem = mem, _ip = 0, _ins = [] }
+
+-- $ IntCode
 
 -- | Parameter modes
 data Mode a
@@ -149,36 +147,11 @@ len Less  = 4
 len Equal = 4
 len Halt  = 1
 
--- | Machine's memory
-type Mem = IntMap Int
-
-fromInts :: [Int] -> Mem
-fromInts = M.fromAscList . zip [0..]
-
--- | Running a program
-run :: Mem -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
-run mem ins = outs
-  where
-    (_,outs) = RWS.execRWS go undefined (Machine { _mem = mem, _ip = 0, _ins = ins })
-
-    go = do ~(ip,(opcode,modes),params) <- fetch
-            case opcode of
-              Unk  -> error $ "unknown instruction: opcode=" ++ show opcode ++ " (ip=" ++ show ip ++ ")"
-              Halt -> pure ()
-              _    -> exec opcode (params @@ modes) >> go
-
-load :: Mem -> Machine
-load mem = Machine { _mem = mem, _ip = 0, _ins = [] }
-
--- | Run a machine up to its first output
-run' :: Machine -> (IntCode,Machine,[Int]) {- ^ (Last opcode,Machine,Outputs) -}
-run' m = RWS.runRWS go undefined m
-  where
-    go = do ~(ip,(opcode,modes),params) <- fetch
-            case opcode of
-              Out  -> exec opcode (params @@ modes) >> pure Out
-              Halt ->                                  pure Halt
-              _    -> exec opcode (params @@ modes) >> go
+-- | IntCode machine operation
+type OpEnv   = ()
+type OpLog   = [Int]
+type OpState = Machine
+type Op      = RWS OpEnv OpLog OpState
 
 -- | Fetch the instruction pointer and the decoded instruction
 fetch :: Op (Int,(IntCode,[Int]),[Int]) -- {- ^ (IP, decoded istruction, parameters) -}
@@ -236,15 +209,6 @@ exec       Halt  _         = error "exec: Halt"
 
 exec       Unk   _         = error "exec: Unk"
 
--- | IntCode machine state
-data Machine = Machine { _mem :: Mem, _ip :: Int, _ins :: [Int] }
-
--- | IntCode machine operation
-type OpEnv = ()
-type OpLog = [Int]
-type OpState = Machine
-type Op = RWS OpEnv OpLog OpState
-
 -- | Read a modal parameter
 get :: Mode Int -> Op Int
 get (Imm x)  = pure x
@@ -260,14 +224,6 @@ ask = RWS.state $ \m ->
   case (_ins m) of
     []     -> error "starving for input"
     (x:xs) -> (x, m { _ins = xs })
-
--- | 
--- ask' :: Op OpEnv
--- ask' = RWS.ask
-
--- | Peek at the next input, if available
-peek :: Op (Maybe Int)
-peek = RWS.gets (listToMaybe . _ins)
 
 -- | Increment the instruction pointer
 incrIp :: Int -> Op ()
