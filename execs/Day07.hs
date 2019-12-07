@@ -38,7 +38,7 @@ part2 mem = maximum [ last $ last $ feedback mem phases | phases <- permutations
 feedback :: Mem -> [Int] {- ^ Phases -} -> [[Int]]
 feedback mem [pa,pb,pc,pd,pe] = outs
   where
-    [a,b,c,d,e] = effectuate . eval . load <$> replicate 5 mem
+    [a,b,c,d,e] = run <$> replicate 5 mem
 
     outs = let a' = a (pa:0:e')
                b' = b (pb:a')
