@@ -4,7 +4,7 @@ module Main (main) where
 import Advent
 
 import Data.List (unfoldr, permutations)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 
 import Data.IntMap.Strict (IntMap, (!?))
 import qualified Data.IntMap.Strict as M
@@ -70,10 +70,10 @@ eval :: Machine -> Effect
 eval m =
   case (peek m) of
     Halt -> Stop
-    Out  -> let  ( m', Just out ) = runOp m undefined  in  Output out (eval m')
+    Out  -> let  ( m', Just out ) = exec1 m undefined  in  Output out (eval m')
     Inp  -> Input $ \x ->
-            let  ( m', Nothing  ) = runOp m x          in  eval m'
-    _    -> let  ( m', Nothing  ) = runOp m undefined  in  eval m'
+            let  ( m', Nothing  ) = exec1 m x          in  eval m'
+    _    -> let  ( m', Nothing  ) = exec1 m undefined  in  eval m'
 
 -- $ Machine
 
@@ -160,61 +160,56 @@ type OpLog   = [Int]
 type OpState = Machine
 type Op      = RWS OpEnv OpLog OpState
 
--- | Fetch the instruction pointer and the decoded instruction
-fetch :: Op (Int,(IntCode,[Int]),[Int]) -- {- ^ (IP, decoded istruction, parameters) -}
-fetch
-  = do ip <- RWS.gets _ip
-       ~(encoded:params) <- RWS.gets (drop ip . M.elems . _mem)
-       pure (ip,decode encoded,params)
-
--- | Decorate parameters with their respective modes
-(@@) :: [Int] {- ^ parameters -} -> [Int] {- ^ modes -} -> [Mode Int]
-ps @@ ms = zipWith (\case 0 -> Pos; 1 -> Imm; _ -> error "unknown mode") ms ps
-
 -- | Execute one IntCode operation
+exec1 :: Machine -> Int -> (Machine,Maybe Int {- ^ Output -})
+exec1 m x = listToMaybe <$> RWS.execRWS (fetch >>= uncurry eval1) x m
 
-runOp :: Machine -> Int -> (Machine,Maybe Int {- ^ Output -})
-runOp m x =
-  case RWS.execRWS (exec op (ps @@ ms)) x m of
-    ( m', []    ) -> ( m', Nothing )
-    ( m', (x:_) ) -> ( m', Just x  )
+-- | Fetch the current opcode
+fetch :: Op (IntCode,[Mode Int]) -- {- ^ (decoded istruction, modal parameters) -}
+fetch =
+  do ip <- RWS.gets _ip
+     ~(encoded:params) <- RWS.gets (drop ip . M.elems . _mem)
+     let ( opcode, modes ) = decode encoded
+     pure ( opcode, params @@ modes )
   where
-    ( ( _,(op,ms),ps ) , _ , _ ) = RWS.runRWS fetch undefined m
+    -- | Decorate parameters with their respective modes
+    (@@) :: [Int] {- ^ parameters -} -> [Int] {- ^ modes -} -> [Mode Int]
+    ps @@ ms = zipWith (\case 0 -> Pos; 1 -> Imm; _ -> error "unknown mode") ms ps
 
--- | Execute one Intcode operation
-exec :: IntCode -> [Mode Int] {- ^ modal parameters -} -> Op ()
+-- | Evaluate one IntCode operation
+eval1 :: IntCode -> [Mode Int] {- ^ modal parameters -} -> Op ()
 
-exec instr@Inp   (a:_)     = do set a =<< ask
-                                next instr
+eval1 i@Inp   (a:_)     = do set a =<< ask
+                             next i
 
-exec instr@Out   (a:_)     = do RWS.tell . pure =<< get a
-                                next instr
+eval1 i@Out   (a:_)     = do RWS.tell . pure =<< get a
+                             next i
 
-exec instr@JT    (a:b:_)   = do n <- get a
-                                if n /= 0
-                                  then setIp =<< get b
-                                  else next instr
+eval1 i@JT    (a:b:_)   = do n <- get a
+                             if n /= 0
+                               then setIp =<< get b
+                               else next i
 
-exec instr@JF    (a:b:_)   = do n <- get a
-                                if n == 0
-                                  then setIp =<< get b
-                                  else next instr
+eval1 i@JF    (a:b:_)   = do n <- get a
+                             if n == 0
+                               then setIp =<< get b
+                               else next i
 
-exec instr@Sum   (a:b:c:_) = do set c =<< (+) <$> get a <*> get b
-                                next instr
+eval1 i@Sum   (a:b:c:_) = do set c =<< (+) <$> get a <*> get b
+                             next i
 
-exec instr@Mul   (a:b:c:_) = do set c =<< (*) <$> get a <*> get b
-                                next instr
+eval1 i@Mul   (a:b:c:_) = do set c =<< (*) <$> get a <*> get b
+                             next i
 
-exec instr@Less  (a:b:c:_) = do set c =<< fmap fromEnum ((<) <$> get a <*> get b)
-                                next instr
+eval1 i@Less  (a:b:c:_) = do set c =<< fmap fromEnum ((<) <$> get a <*> get b)
+                             next i
 
-exec instr@Equal (a:b:c:_) = do set c =<< fmap fromEnum ((==) <$> get a <*> get b)
-                                next instr
+eval1 i@Equal (a:b:c:_) = do set c =<< fmap fromEnum ((==) <$> get a <*> get b)
+                             next i
 
-exec       Halt  _         = error "exec: Halt"
+eval1   Halt  _         = error "eval1: Halt"
 
-exec       Unk   _         = error "exec: Unk"
+eval1   Unk   _         = error "eval1: Unk"
 
 -- | Read a modal parameter
 get :: Mode Int -> Op Int
