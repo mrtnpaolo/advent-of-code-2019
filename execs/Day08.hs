@@ -1,39 +1,37 @@
 module Main (main) where
 
-import Advent
-import Data.Ord
+import Advent (getRawInput)
+import Data.Ord (comparing)
 import Data.Char (digitToInt)
-import Data.List
-import Data.List.Split
-import Data.Function
+import Data.List (minimumBy, sort, group, reverse, transpose, foldl')
+import Data.List.Split (chunksOf)
 
 main :: IO ()
 main =
   do ns <- map (map digitToInt) . chunksOf (25*6) . init <$> getRawInput 8
      print $ part1 ns
-     print $ length ns
-     -- print `mapM_` part2 ns
-     -- let ts = map (map digitToInt) . chunksOf (2*2) $ "0222112222120000"
-     putStrLn `mapM_` part2 ns
+     putStr . showImage $ part2 ns
 
 part1 :: [[Int]] -> Int
-part1 = (\[_,ones,twos] -> ones*twos) .map length . group . sort . minimumBy (comparing zeros)
+part1 = (\[_,ones,twos] -> ones*twos) . map length . group . sort . minimumBy (comparing zeros)
 
+zeros :: [Int] -> Int
 zeros = length . filter (0==)
 
-part2 :: [[Int]] -> [String]
-part2 = showImage . map squish . transpose . reverse
+part2 :: [[Int]] -> [Int]
+part2 = map squish . transpose . reverse
 
-squish = foldl over 2
+squish :: [Int] -> Int
+squish = foldl' over 2
+  where
+    over :: Int -> Int -> Int
+    over 2 x = x
+    over x 2 = x
+    over _ 1 = 1
+    over _ 0 = 0
 
-over 2 x = x
-over x 2 = x
-over _ 1 = 1
-over _ 0 = 0
-
-showImage = map showLine . chunksOf 25
-
-showLine = map showDigit
-
-showDigit 0 = '#'
-showDigit 1 = ' '
+showImage :: [Int] -> String
+showImage = unlines . map (map showDigit) . chunksOf 25
+  where
+    showDigit 0 = ' '
+    showDigit 1 = '#'
