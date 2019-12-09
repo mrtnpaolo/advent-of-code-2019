@@ -9,6 +9,7 @@ main =
   do raw :: [Integer] <- map read . words . map sep <$> getRawInput 9
      print $ quine [109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99]
      print $ run (fromIntegers raw) [1]
+     print $ run (fromIntegers raw) [2]
   where
     sep ',' = ' '
     sep x = x
