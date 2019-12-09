@@ -12,8 +12,9 @@ copyright:           2019 Paolo Martini
 build-type:          Simple
 
 library
-  exposed-modules:     Advent
-  build-depends:       base
+  exposed-modules:     Advent,
+                       Advent.IntCode
+  build-depends:       base, containers, transformers
   hs-source-dirs:      common
   default-language:    Haskell2010
 
