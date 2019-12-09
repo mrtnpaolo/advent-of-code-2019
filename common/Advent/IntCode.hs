@@ -1,10 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 module Advent.IntCode where
 
-import Data.List (unfoldr, genericDrop)
+import Data.List (unfoldr)
 import Data.Maybe (fromMaybe, listToMaybe)
 
-import Data.IntMap.Strict (IntMap, (!?))
+import Data.IntMap.Strict (IntMap, (!), (!?))
 import qualified Data.IntMap.Strict as M
 
 import Control.Monad.Trans.RWS.CPS (RWS)
@@ -52,7 +52,7 @@ load mem = Machine { _mem = M.fromAscList (zip [0..] mem), _rb = 0, _ip = 0, _in
 
 -- | Peek at the current operation
 peek :: Machine -> IntCode
-peek m = fst . decode . head . genericDrop ip . M.elems . _mem $ m
+peek m = fst . decode . head . drop ip . M.elems . _mem $ m
   where
     ip = _ip m
 
@@ -132,7 +132,7 @@ exec1 m x = listToMaybe <$> RWS.execRWS (fetch >>= uncurry eval1) x m
 fetch :: Op (IntCode,[Mode Int]) -- {- ^ (decoded istruction, modal parameters) -}
 fetch =
   do ip <- RWS.gets _ip
-     ~(encoded:params) <- RWS.gets (genericDrop ip . M.elems . _mem)
+     ~(encoded:params) <- RWS.gets ((\mem -> (mem !) <$> [ip..]) . _mem)
      let ( opcode, modes ) = decode encoded
      pure ( opcode, params @@ modes )
   where
