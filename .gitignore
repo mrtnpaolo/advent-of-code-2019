@@ -37,3 +37,4 @@ wiki
 wip
 .ghc.environment.*
 *.png
+profiling/

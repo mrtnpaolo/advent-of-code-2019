@@ -52,7 +52,7 @@ load mem = Machine { _mem = M.fromAscList (zip [0..] mem), _rb = 0, _ip = 0, _in
 
 -- | Peek at the current operation
 peek :: Machine -> IntCode
-peek m = fst . decode . head . drop ip . M.elems . _mem $ m
+peek m = fst . decode . (! ip) . _mem $ m
   where
     ip = _ip m
 
