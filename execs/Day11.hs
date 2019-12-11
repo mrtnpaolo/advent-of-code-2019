@@ -8,7 +8,7 @@ import Advent.IntCode
 import Data.Map (Map)
 import qualified Data.Map as M
 
-import Control.Arrow hiding (left,right)
+import Control.Arrow ((&&&),(***))
 
 main :: IO ()
 main =
@@ -19,11 +19,11 @@ main =
     sep ',' = ' '
     sep x = x
 
--- black = 0
--- white = 1
+type Color = Int -- black = 0, white = 1
 
 type Coord = (Int,Int)
-data Dir = Up | Right | Down | Left deriving (Show,Enum)
+
+data Dir = Up | Right | Down | Left deriving (Enum)
 
 left :: Dir -> Dir
 left = toEnum . (`mod`4) . pred . fromEnum
@@ -36,8 +36,6 @@ move Up    (x,y) = (x,y+1)
 move Right (x,y) = (x+1,y)
 move Down  (x,y) = (x,y-1)
 move Left  (x,y) = (x-1,y)
-
-type Color = Int
 
 paint :: [Int] -> Map Coord (Color,Int) -> Map Coord (Color,Int)
 paint mem panels = painted
@@ -58,9 +56,12 @@ paint mem panels = painted
 
     go (Output color bot)     0 pos dir panels = go bot 1 pos dir panels'
       where
-        panels' = M.alter paint pos panels
-        paint Nothing           = Just (color,1)
-        paint (Just (_,paints)) = Just (color,succ paints)
+        panels' = M.insertWith combine pos (color,1) panels
+        combine (color,_) (_,paints) = (color,succ paints)
+
+        -- panels' = M.alter paint pos panels
+        -- paint Nothing           = Just (color,1)
+        -- paint (Just (_,paints)) = Just (color,succ paints)
 
     go (Output direction bot) 1 pos dir panels = go bot 0 pos' dir' panels
       where
@@ -71,14 +72,13 @@ paint mem panels = painted
     go (Input bot) n pos dir panels = go (bot $ look pos panels) n pos dir panels
 
 showPanels :: Map Coord (Color,Int) -> String
-showPanels panels = unlines $ 
+showPanels panels = unlines . reverse $
   (flip map) [ym,ym+1..yM] $ \y ->
     (flip map) [xm,xm+1..xM] $ \x ->
       case M.lookup (x,y) panels of
-        Nothing -> ' '
+        Nothing    -> '_'
         Just (0,_) -> '.'
         Just (1,_) -> '#'
   where
     coords = M.keys panels
     ((xm,xM),(ym,yM)) = ((minimum &&& maximum) *** (minimum &&& maximum)) $ unzip coords
-
