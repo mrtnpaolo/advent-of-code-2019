@@ -8,10 +8,13 @@ import Advent.IntCode
 import Data.Map (Map)
 import qualified Data.Map as M
 
+import Control.Arrow hiding (left,right)
+
 main :: IO ()
 main =
   do mem <- map read . words . map sep <$> getRawInput 11
-     print (part1 mem)
+     print (M.size $ paint mem M.empty)
+     putStr (showPanels $ paint mem $ M.singleton (0,0) (1,0))
   where
     sep ',' = ' '
     sep x = x
@@ -36,10 +39,10 @@ move Left  (x,y) = (x-1,y)
 
 type Color = Int
 
-part1 :: [Int] -> Int
-part1 mem = M.size painted
+paint :: [Int] -> Map Coord (Color,Int) -> Map Coord (Color,Int)
+paint mem panels = painted
   where
-    painted = go (run' mem) 0 (0,0) Up (M.empty)
+    painted = go (run' mem) 0 (0,0) Up panels
 
     look :: Coord -> Map Coord (Color,Int) -> Int
     look p = fst . M.findWithDefault (0,undefined) p
@@ -66,3 +69,16 @@ part1 mem = M.size painted
         pos' = move dir' pos
 
     go (Input bot) n pos dir panels = go (bot $ look pos panels) n pos dir panels
+
+showPanels :: Map Coord (Color,Int) -> String
+showPanels panels = unlines $ 
+  (flip map) [ym,ym+1..yM] $ \y ->
+    (flip map) [xm,xm+1..xM] $ \x ->
+      case M.lookup (x,y) panels of
+        Nothing -> ' '
+        Just (0,_) -> '.'
+        Just (1,_) -> '#'
+  where
+    coords = M.keys panels
+    ((xm,xM),(ym,yM)) = ((minimum &&& maximum) *** (minimum &&& maximum)) $ unzip coords
+
