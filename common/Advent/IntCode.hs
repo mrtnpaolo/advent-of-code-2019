@@ -1,7 +1,5 @@
 {-# LANGUAGE BangPatterns, BlockArguments, LambdaCase #-}
-module Advent.IntCode
-  ( run
-  ) where
+module Advent.IntCode where
 
 import Data.Bool (bool)
 
@@ -10,6 +8,9 @@ import qualified Data.IntMap.Strict as M
 
 run :: [Int] {- ^ Memory -} -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
 run = outs . eval . load
+
+run' :: [Int] -> Effect
+run' = eval . load
 
 outs :: Effect -> [Int] {- ^ Inputs -} -> [Int] {- ^ Outputs -}
 outs (Output x eff) ins    = x : outs eff ins
