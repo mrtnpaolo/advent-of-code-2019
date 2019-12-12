@@ -1,114 +1,120 @@
-{-# OPTIONS_GHC -Wno-unused-matches -Wno-unused-imports -Wno-missing-signatures -Wno-unused-top-binds #-}
+{-# LANGUAGE BangPatterns #-}
 module Main (main) where
 
-import Advent
-import Data.List
-import Data.Foldable
-import Data.Map.Strict (Map, (!))
-import qualified Data.Map.Strict as M
-import Data.Set (Set)
-import qualified Data.Set as S
-import Control.Arrow ((***))
--- import Debug.Trace
+import Data.Bifunctor
 
 main :: IO ()
-main = print t
+main =
+  do print (energy (after 1000 moons))
+     print t
   where
+    after n = head . drop n . iterate step
+
     (tx,ty,tz) = part2 moons
     t = lcm (lcm tx ty) tz
 
 type P = (Int,Int,Int) -- position
 type V = (Int,Int,Int) -- velocity
 type Moon = (P,V)
-type Moons = Map Int Moon
+type Moons = (Moon,Moon,Moon,Moon)
 
 moons :: Moons
-moons = M.fromList $ zip [0..]
-  [ (( 4,  1, 1),(0,0,0))
+moons =
+  ( (( 4,  1, 1),(0,0,0))
   , ((11,-18,-1),(0,0,0))
   , ((-2,-10,-4),(0,0,0))
-  , ((-7, -2,14),(0,0,0)) ]
+  , ((-7, -2,14),(0,0,0)) )
+
 -- moons :: Moons
--- moons = M.fromList $ zip [0..]
---   [ ((-1, 0,  2),(0,0,0))
+-- moons =
+--   ( ((-1, 0,  2),(0,0,0))
 --   , (( 2,-10,-7),(0,0,0))
 --   , (( 4, -8, 8),(0,0,0))
---   , (( 3,  5,-1),(0,0,0)) ]
+--   , (( 3,  5,-1),(0,0,0)) )
 
-opposite (a,b,c) = (-a,-b,-c)
+opp :: (Int,Int,Int) -> (Int,Int,Int)
+opp (!a,!b,!c) = (-a,-b,-c)
 
-pairs l = [(x,y) | (x:ys) <- tails l, y <- ys]
+(<+>) :: (Int,Int,Int) -> (Int,Int,Int) -> (Int,Int,Int)
+(!a,!b,!c) <+> (d,!e,!f) = (a+d,b+e,c+f)
+{-# INLINE (<+>) #-}
 
-gravity1 a b = case compare a b of LT -> -1; EQ -> 0; GT -> 1
+gravity1 :: Int -> Int -> Int
+gravity1 !a !b = case compare a b of LT -> -1; EQ -> 0; GT -> 1
 
 gravity :: Moon -> Moon -> V
-gravity ((x0,y0,z0),_) ((x1,y1,z1),_) =
-  (gravity1 x0 x1, gravity1 y0 y1, gravity1 z0 z1)
+gravity ((!x0,!y0,!z0),_) ((!x1,!y1,!z1),_) =
+  ( gravity1 x0 x1
+  , gravity1 y0 y1
+  , gravity1 z0 z1 )
 
-effects :: Moons -> Map Int [V]
-effects ms = M.unionsWith (++) $
-  [ M.fromList [(m,[opposite v]),(n,[v])]
-  | (m,n) <- pairs ids
-  , let v = gravity (ms!m) (ms!n)
-  ]
+effects :: Moons -> (V,V,V,V)
+effects (!m0,!m1,!m2,!m3) =
+  (     g01 <+>     g02 <+>     g03
+  , opp g01 <+>     g12 <+>     g13
+  , opp g02 <+> opp g12 <+>     g23
+  , opp g03 <+> opp g13 <+> opp g23
+  )
   where
-    ids = M.keys ms
+    g01 = gravity m1 m0
+    g02 = gravity m2 m0
+    g03 = gravity m3 m0
+    g12 = gravity m2 m1
+    g13 = gravity m3 m1
+    g23 = gravity m3 m2
+{-# INLINE effects #-}
 
 applyGravity :: Moons -> Moons
-applyGravity ms = M.mapWithKey f ms
+applyGravity ms@(!m0,!m1,!m2,!m3) = (second (v0 <+>) m0,second (v1 <+>) m1,second (v2 <+>) m2,second (v3 <+>) m3)
   where
-    effs = effects ms
-
-    f i m@(p,(vx,vy,vz)) = (p,(vx',vy',vz'))
-      where
-        vs = effs ! i
-        vx' = sum (vx : map fst3 vs)
-        vy' = sum (vy : map snd3 vs)
-        vz' = sum (vz : map trd3 vs)
-
-fst3 (a,_,_) = a
-snd3 (_,b,_) = b
-trd3 (_,_,c) = c
+    (!v0,!v1,!v2,!v3) = effects ms
+{-# INLINE applyGravity #-}
 
 applyVelocity :: Moons -> Moons
-applyVelocity = fmap f
+applyVelocity (!m0,!m1,!m2,!m3) = (f m0,f m1,f m2,f m3)
   where
-    f ((x,y,z),v@(vx,vy,vz)) = ((x+vx,y+vy,z+vz),v)
+    f ((!x,!y,!z),v@(!vx,!vy,!vz)) = ((x+vx,y+vy,z+vz),v)
+{-# INLINE applyVelocity #-}
 
 step :: Moons -> Moons
 step = applyVelocity . applyGravity
+{-# INLINE step #-}
 
 energy :: Moons -> Int
-energy = sum . map e . toList
+energy (!m0,!m1,!m2,!m3) = e m0 + e m1 + e m2 + e m3
   where
     e m = p m * k m
 
-    p ((x,y,z),_) = abs x + abs y + abs z
-    k (_,(vx,vy,vz)) = abs vx + abs vy + abs vz
+    p ((!x,!y,!z),_) = abs x + abs y + abs z
+    k (_,(!vx,!vy,!vz)) = abs vx + abs vy + abs vz
 
--- ((x0,vx0),(x1,vx1),(x2,vx2),(x3,vx3)) -- and similar for y and z
-type Mono = Set ((Int,Int),(Int,Int),(Int,Int),(Int,Int))
+type Proj = (Int,Int,Int,Int,Int,Int,Int,Int)
 
-part2 ms = go 0 (S.empty,S.empty,S.empty) (-1,-1,-1) (iterate step ms)
+project :: Moons -> (Proj,Proj,Proj)
+project ms = (x,y,z)
   where
+    (  ((!x0,!y0,!z0),(!vx0,!vy0,!vz0))
+     , ((!x1,!y1,!z1),(!vx1,!vy1,!vz1))
+     , ((!x2,!y2,!z2),(!vx2,!vy2,!vz2))
+     , ((!x3,!y3,!z3),(!vx3,!vy3,!vz3)) ) = ms
+
+    x = (x0,vx0,x1,vx1,x2,vx2,x3,vx3)
+    y = (y0,vy0,y1,vy1,y2,vy2,y3,vy3)
+    z = (z0,vz0,z1,vz1,z2,vz2,z3,vz3)
+{-# INLINE project #-}
+
+part2 :: Moons -> (Int,Int,Int) {- ^ Periods of repetition for each axis -}
+part2 ms = go 1 0 0 0 (tail $ iterate step ms)
+  where
+    (startx,starty,startz) = project ms
+
     -- compute minimum times on each axis independently
-    go :: Int -> (Mono,Mono,Mono) -> (Int,Int,Int) -> [Moons] -> (Int,Int,Int)
-    go i (seenx,seeny,seenz) (tx,ty,tz) (ms:mss)
-      | tx < 0 || ty < 0 || tz < 0 = go (succ i) (seenx',seeny',seenz') (tx',ty',tz') mss
+    go :: Int -> Int -> Int -> Int -> [Moons] -> (Int,Int,Int)
+    go !i !tx !ty !tz (!ms:mss)
+      | tx < 1 || ty < 1 || tz < 1 = go (succ i) tx' ty' tz' mss
       | otherwise                  = (tx,ty,tz)
       where
-        x = let [m0,m1,m2,m3] = map (fst3 *** fst3) (toList ms) in (m0,m1,m2,m3)
-        seenx' | tx < 0    = S.insert x seenx
-               | otherwise = seenx
-        tx' = if tx < 0 && x `S.member` seenx then i else tx
-
-        y = let [m0,m1,m2,m3] = map (snd3 *** snd3) (toList ms) in (m0,m1,m2,m3)
-        seeny' | ty < 0    = S.insert y seeny
-               | otherwise = seeny
-        ty' = if ty < 0 && y `S.member` seeny then i else ty
-
-        z = let [m0,m1,m2,m3] = map (trd3 *** trd3) (toList ms) in (m0,m1,m2,m3)
-        seenz' | tz < 0    = S.insert z seenz
-               | otherwise = seenz
-        tz' = if tz < 0 && z `S.member` seenz then i else tz
-
+        (x,y,z) = project ms
+        tx' = if tx < 1 && startx == x then i else tx
+        ty' = if ty < 1 && starty == y then i else ty
+        tz' = if tz < 1 && startz == z then i else tz
