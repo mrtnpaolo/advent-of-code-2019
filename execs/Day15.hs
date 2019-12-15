@@ -9,6 +9,8 @@ import qualified Data.Map.Strict as M
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Foldable
+import Control.Applicative
+import Control.Monad (when)
 import Control.Arrow ((***),(&&&))
 import System.Random
 import Debug.Trace
@@ -42,71 +44,47 @@ begin = Game { pos_ = (0,0), command_ = N, area_ = M.singleton (0,0) Empty }
 part1 :: [Int] -> IO ()
 part1 mem =
   do inputs <- randomInputs
-     game <- go inputs begin (run' mem)
-     putStrLn (showGame game)
-     print (pos_ game)
-  where
-    go _ game (Stop)         = pure game
+     game <- go 0 inputs begin (run' mem)
+     (putStrLn . showGame) game
 
-    go (x:xs) game (Input f)      = go xs game' (f (fromEnum command))
+  where
+    go i _ game (Stop)         = pure game
+
+    go i (x:xs) game (Input f)      = do when (i `mod` 1000 == 0) $
+                                           (putStrLn . showGame) game
+                                         go (succ i) xs game' (f (fromEnum command))
       where
         command = x
         game' = game { command_ = command }
 
-    go xs game (Output n eff) =
+    go i xs game (Output n eff) =
       case (toEnum n) of
-        StatusMoved -> go xs game'' eff
+        StatusMoved -> go (succ i) xs game'' eff
           where
             game'  = moveDroid game
             game'' = areaInsert (pos_ game') Empty game'
-        StatusWall  -> go xs game' eff
+        StatusWall  -> go (succ i) xs game' eff
           where
             game' = areaInsert (move (command_ game) (pos_ game)) Wall game
-        StatusFound -> pure game''
+        StatusFound -> go (succ i) xs game'' eff
           where
             game'  = moveDroid game
             game'' = areaInsert (pos_ game') Goal game'
 
 -- part 2
 
---          ▓▓▓▓▓▓▓▓▓▓▓
---         ▓░░░░░░░░░░░▓
---      ▓▓▓▓░▓▓▓▓▓▓▓▓▓░▓
---     ▓░░░▓░░░▓░░░░░▓░▓
---     ▓░▓░▓▓▓░▓░▓▓▓░▓░▓▓
---     ▓░▓░░░░░▓░▓░░░░░▓o▓
---     ▓░▓▓▓▓▓▓▓░▓░▓▓▓▓▓░▓
---     ▓░░░▓░░░▓░▓░▓░░░░░▓
---      ▓▓░▓▓▓░▓░▓▓▓░▓▓▓▓   ▓▓▓
---       ▓░░░░░▓░░░░░▓     ▓░░░▓
---        ▓▓▓▓░▓▓▓▓▓▓▓▓▓▓  ▓░▓░▓
---           ▓░░░░░░░░░░░▓ ▓░▓░▓
---  ▓▓    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░▓▓▓░▓░▓▓▓▓
--- ▓░░░▓ ▓░░░░░░░░░░░░░▓░▓░░░▓░░░░░▓
--- ▓░▓▓▓▓▓░▓▓▓▓▓▓▓▓▓▓▓░▓░▓░▓▓▓▓▓▓▓░▓▓
--- ▓░▓░░░░░▓░░░░░░░░░▓░▓░░░▓░░░░░▓░░░▓
--- ▓░▓░▓▓▓▓▓░▓░▓▓▓░▓▓▓░▓▓▓▓▓░▓░▓▓▓▓▓░▓
--- ▓░▓░▓★░░░░▓░▓░░░▓░░░▓░░░▓░▓░░░░░░░▓
--- ▓░▓░▓▓▓▓▓▓▓░▓▓▓▓▓░▓░▓▓▓░▓░▓▓▓▓▓▓▓▓
--- ▓░▓░░░░░░░░░▓░░░░░▓░░░░░▓░░░▓
--- ▓░▓▓▓▓▓▓▓▓▓░▓░▓▓▓▓▓░▓▓▓▓▓▓▓░▓
--- ▓░░░░░▓░░░░░▓░▓░░░░░▓░░░░░▓░▓
--- ▓░▓▓▓▓▓░▓▓▓▓▓░▓▓▓▓▓▓▓░▓▓▓░▓░▓
--- ▓░░░░░░░░░░░▓░░░░░░░░░░░▓░░░▓
---  ▓▓▓▓▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓▓▓▓ ▓▓▓
-
 part2 :: String -> IO Int
 part2 raw = go 0 [start] (S.fromList area)
   where
     area = [ (x,y) | (y,xs) <- zip [0..] (lines raw)
                    , (x,tile) <- zip [0..] xs
-                   , tile `elem` "░o" ]
+                   , tile `elem` "⌾░o" ]
     walls = [ (x,y) | (y,xs) <- zip [0..] (lines raw)
                     , (x,'▓') <- zip [0..] xs ]
     [start] = [ (x,y) | (y,xs) <- zip [0..] (lines raw)
                       , (x,'★') <- zip [0..] xs ]
     go i frontier remaining
-      | S.null remaining = pure i
+      | S.null remaining = printRemaining >> pure i
       | otherwise        = printRemaining >> go (i+1) near far
       where
         near = [ y | x <- frontier, y <- adj x, S.member y remaining ]
@@ -117,6 +95,7 @@ part2 raw = go 0 [start] (S.fromList area)
           where
             game = begin { area_ = M.fromList a }
             a = [ ((x,-y),Wall) | (x,y) <- walls ] ++ [ ((x,-y),Empty) | (x,y) <- toList remaining ]
+
 -- ai
 
 randomInputs :: IO [Command]
