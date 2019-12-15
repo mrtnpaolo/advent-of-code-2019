@@ -6,13 +6,20 @@ import Advent
 import Advent.IntCode
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
+import Data.Set (Set)
+import qualified Data.Set as S
+import Data.Foldable
 import Control.Arrow ((***),(&&&))
 import System.Random
+import Debug.Trace
 
 main :: IO ()
 main =
   do mem <- getIntCode 15
-     part1 mem
+     -- part1 mem
+     area <- getRawInput (-1)
+     putStrLn area
+     part2 area >>= print
   where
     sep ',' = ' '; sep x = x
 
@@ -26,6 +33,9 @@ data Game = Game
   , command_ :: Command
   , area_    :: Area
   } deriving (Show)
+
+begin :: Game
+begin = Game { pos_ = (0,0), command_ = N, area_ = M.singleton (0,0) Empty }
 
 -- part 1
 
@@ -57,9 +67,56 @@ part1 mem =
             game'  = moveDroid game
             game'' = areaInsert (pos_ game') Goal game'
 
-begin :: Game
-begin = Game { pos_ = (0,0), command_ = N, area_ = M.singleton (0,0) Empty }
+-- part 2
 
+--          ▓▓▓▓▓▓▓▓▓▓▓
+--         ▓░░░░░░░░░░░▓
+--      ▓▓▓▓░▓▓▓▓▓▓▓▓▓░▓
+--     ▓░░░▓░░░▓░░░░░▓░▓
+--     ▓░▓░▓▓▓░▓░▓▓▓░▓░▓▓
+--     ▓░▓░░░░░▓░▓░░░░░▓o▓
+--     ▓░▓▓▓▓▓▓▓░▓░▓▓▓▓▓░▓
+--     ▓░░░▓░░░▓░▓░▓░░░░░▓
+--      ▓▓░▓▓▓░▓░▓▓▓░▓▓▓▓   ▓▓▓
+--       ▓░░░░░▓░░░░░▓     ▓░░░▓
+--        ▓▓▓▓░▓▓▓▓▓▓▓▓▓▓  ▓░▓░▓
+--           ▓░░░░░░░░░░░▓ ▓░▓░▓
+--  ▓▓    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░▓▓▓░▓░▓▓▓▓
+-- ▓░░░▓ ▓░░░░░░░░░░░░░▓░▓░░░▓░░░░░▓
+-- ▓░▓▓▓▓▓░▓▓▓▓▓▓▓▓▓▓▓░▓░▓░▓▓▓▓▓▓▓░▓▓
+-- ▓░▓░░░░░▓░░░░░░░░░▓░▓░░░▓░░░░░▓░░░▓
+-- ▓░▓░▓▓▓▓▓░▓░▓▓▓░▓▓▓░▓▓▓▓▓░▓░▓▓▓▓▓░▓
+-- ▓░▓░▓★░░░░▓░▓░░░▓░░░▓░░░▓░▓░░░░░░░▓
+-- ▓░▓░▓▓▓▓▓▓▓░▓▓▓▓▓░▓░▓▓▓░▓░▓▓▓▓▓▓▓▓
+-- ▓░▓░░░░░░░░░▓░░░░░▓░░░░░▓░░░▓
+-- ▓░▓▓▓▓▓▓▓▓▓░▓░▓▓▓▓▓░▓▓▓▓▓▓▓░▓
+-- ▓░░░░░▓░░░░░▓░▓░░░░░▓░░░░░▓░▓
+-- ▓░▓▓▓▓▓░▓▓▓▓▓░▓▓▓▓▓▓▓░▓▓▓░▓░▓
+-- ▓░░░░░░░░░░░▓░░░░░░░░░░░▓░░░▓
+--  ▓▓▓▓▓▓▓▓▓▓▓ ▓▓▓▓▓▓▓▓▓▓▓ ▓▓▓
+
+part2 :: String -> IO Int
+part2 raw = go 0 [start] (S.fromList area)
+  where
+    area = [ (x,y) | (y,xs) <- zip [0..] (lines raw)
+                   , (x,tile) <- zip [0..] xs
+                   , tile `elem` "░o" ]
+    walls = [ (x,y) | (y,xs) <- zip [0..] (lines raw)
+                    , (x,'▓') <- zip [0..] xs ]
+    [start] = [ (x,y) | (y,xs) <- zip [0..] (lines raw)
+                      , (x,'★') <- zip [0..] xs ]
+    go i frontier remaining
+      | S.null remaining = pure i
+      | otherwise        = printRemaining >> go (i+1) near far
+      where
+        near = [ y | x <- frontier, y <- adj x, S.member y remaining ]
+        far = S.difference remaining (S.fromList near)
+        printRemaining =
+          do print i
+             putStr (showGame game)
+          where
+            game = begin { area_ = M.fromList a }
+            a = [ ((x,-y),Wall) | (x,y) <- walls ] ++ [ ((x,-y),Empty) | (x,y) <- toList remaining ]
 -- ai
 
 randomInputs :: IO [Command]
@@ -81,6 +138,9 @@ move N = n
 move S = s
 move W = w
 move E = e
+
+adj :: Coord -> [Coord]
+adj x = [n,e,s,w] <*> [x]
 
 -- area
 
@@ -118,6 +178,7 @@ showGame game = unlines $
     (flip map) [xm..xM] $ \x ->
       case (x,y) of
         (0,0) -> 'o'
+        _ | (x,y) == (pos_ game) -> '⌾'
         _     ->
           case (area_ game M.!? (x,y)) of
             Nothing -> ' '
