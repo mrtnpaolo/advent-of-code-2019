@@ -6,6 +6,7 @@ import Advent
 import Advent.IntCode
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
+import Control.Arrow ((***),(&&&))
 import System.Random
 
 main :: IO ()
@@ -32,7 +33,8 @@ part1 :: [Int] -> IO ()
 part1 mem =
   do inputs <- randomInputs
      game <- go inputs begin (run' mem)
-     print game
+     putStrLn (showGame game)
+     print (pos_ game)
   where
     go _ game (Stop)         = pure game
 
@@ -50,7 +52,10 @@ part1 mem =
         StatusWall  -> go xs game' eff
           where
             game' = areaInsert (move (command_ game) (pos_ game)) Wall game
-        StatusFound -> pure game
+        StatusFound -> pure game''
+          where
+            game'  = moveDroid game
+            game'' = areaInsert (pos_ game') Goal game'
 
 begin :: Game
 begin = Game { pos_ = (0,0), command_ = N, area_ = M.singleton (0,0) Empty }
@@ -104,3 +109,21 @@ instance Bounded Command where
   maxBound = E
 
 data Status = StatusWall | StatusMoved | StatusFound deriving (Enum)
+
+-- visualization
+
+showGame :: Game -> String
+showGame game = unlines $
+  (flip map) [yM,yM-1..ym] $ \y ->
+    (flip map) [xm..xM] $ \x ->
+      case (x,y) of
+        (0,0) -> 'o'
+        _     ->
+          case (area_ game M.!? (x,y)) of
+            Nothing -> ' '
+            Just Empty -> '░'
+            Just Wall  -> '▓'
+            Just Goal  -> '★'
+  where
+    minMax = minimum &&& maximum
+    ((xm,xM),(ym,yM)) = (minMax *** minMax) . unzip . M.keys . area_ $ game
