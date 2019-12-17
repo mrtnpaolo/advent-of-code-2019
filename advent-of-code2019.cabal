@@ -128,6 +128,14 @@ executable Day15
 executable Day16
   main-is:             Day16.hs
   build-depends:       advent-of-code2019, base, containers
+  build-depends:       advent-of-code2019, base, containers, vector
+  hs-source-dirs:      execs
+  default-language:    Haskell2010
+  default-extensions:
+
+executable Day17
+  main-is:             Day17.hs
+  build-depends:       advent-of-code2019, base, containers, vector
   hs-source-dirs:      execs
   default-language:    Haskell2010
   default-extensions:
