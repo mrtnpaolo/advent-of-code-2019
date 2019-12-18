@@ -44,40 +44,6 @@ parse raw = Maze entrance keys doors (S.fromList $ map fst maze)
     doors = M.fromList [ (p,c) | (p,c) <- filter (isUpper . snd) maze ]
     maze  = [ (p,t) | (p,t) <- tiles, t /= '#']
 
--- emptyFlood :: Maze -> Flood
--- emptyFlood m@Maze{..} = Flood
---   { f_maze  = m
---   , f_keys  = []
---   , f_dists = M.empty }
-
--- addKey :: Flood -> Char -> Flood
--- addKey f k = f { f_keys = k : (f_keys f) }
--- 
--- addKeys :: Flood -> [Char] -> Flood
--- addKeys = L.foldl' addKey
-
--- -- | give each *reachable* tile a distance from a given coordinate
--- -- reachability is determined by the given `f_keys`
--- flood :: Flood -> Coord -> Flood
--- flood f start = Flood m (f_keys f) f_dists
---   where
---     m@Maze{..} = f_maze f
-
---     f_dists = go (M.singleton start 0) 0 [start]
-
---     go done d ps
---       | null expand = done
---       | otherwise = go done' (d+1) expand
---       where
---         candidates = [ q | p <- ps, q <- adj m p ]
-
---         expand = [ q | q <- candidates
---                      , q `M.notMember` done
---                      , traceShow ("expand",q,toLower <$> (doors M.!? q),(f_keys f)) (q `M.notMember` doors || toLower (doors M.! q) `elem` (f_keys f)) ]
-
---         done' = M.union done (M.fromList [ (q,d+1) | q <- expand ])
---         -- remaining' = remaining `S.difference` (M.keysSet done')
-
 -- | give each *reachable* tile a distance from a given coordinate
 -- reachability is determined by the given `f_keys`
 flood :: Maze -> [Char] -> Coord -> Flood
@@ -93,7 +59,7 @@ flood m@Maze{..} gotten start = dists
 
         expand = [ q | q <- candidates
                      , q `M.notMember` done
-                     , traceShow ("expand",q,toLower <$> (doors M.!? q), gotten) $
+                     , {- traceShow ("expand",q,toLower <$> (doors M.!? q), gotten) $ -}
                        q `M.notMember` doors || toLower (doors M.! q) `elem` gotten ]
 
         done' = M.union done (M.fromList [ (q,d+1) | q <- expand ])
@@ -112,8 +78,11 @@ part1 m@Maze{..} = solve start 0 [] goal
     goal = M.keys keys
 
     solve p d gotten missing
+      | d > 4248     = []
       | null missing = [d]
-      | otherwise    = traceShow ("solutions",solutions) $ solutions
+      | otherwise    = (if not (null solutions)
+                        then traceShow ("solutions",solutions,"gotten",gotten,"missing",missing)
+                        else id) solutions
         where
           dists = flood m gotten p
 
@@ -124,65 +93,3 @@ part1 m@Maze{..} = solve start 0 [] goal
              | (k,d') <- reachable
              , let got' = k : gotten
              , let mis' = L.delete k missing ]
-
---           f = (\asd -> traceShow ("added",f_keys asd) asd) $ addKeys (flood (emptyFlood m) p) (traceShow ("addKeys",gotten) gotten)
-
---           reachable = (\r -> traceShow ("reachable",r) r) $ [ (k,d') | k <- traceShow ("gotten",gotten,"missing",missing) missing, Just d' <- pure (f_dists f M.!? (keys M.! k)) ]
-
---           solutions = concat
---             [ solve (keys M.! k) (d+d') got' mis'
---              | (k,d') <- traceShow (p,d,gotten,missing,reachable,f) $ reachable
---              , let got' = k : gotten
---              , let mis' = L.delete k missing ]
-
-
--- part1 m@Maze{..} = solve start 0 [] goal
---   where
---     start = entrance
---     goal :: [Char]
---     goal = M.keys keys
-
---     solve p d gotten missing
---       | null missing = [d]
---       | otherwise    = traceShow ("solutions",solutions) $ solutions
---         where
---           f = (\asd -> traceShow ("added",f_keys asd) asd) $ addKeys (flood (emptyFlood m) p) (traceShow ("addKeys",gotten) gotten)
-
---           reachable = (\r -> traceShow ("reachable",r) r) $ [ (k,d') | k <- traceShow ("gotten",gotten,"missing",missing) missing, Just d' <- pure (f_dists f M.!? (keys M.! k)) ]
-
---           solutions = concat
---             [ solve (keys M.! k) (d+d') got' mis'
---              | (k,d') <- traceShow (p,d,gotten,missing,reachable,f) $ reachable
---              , let got' = k : gotten
---              , let mis' = L.delete k missing ]
-
---     -- solve p d gotten missing
---     --   | null missing = [d]
---     --   | otherwise    = traceShow d $ solutions
---     --     where
---     --       -- check if we are on top of a key at `p` and collect it
---     --       isKey = maybeToList $ listToMaybe [ k | (k,q) <- M.assocs keys, q == p ]
---     --       gotten' = isKey ++ gotten
-
---     --       xxxxx = addKeys (flood (emptyFlood m) p) gotten'
---     --       f@Flood{..} = traceShow ("solve",floodKeys xxxxx) $ xxxxx
-
---     --       reachable = [ (k,d') | k <- missing, Just d' <- pure (f_dists M.!? (keys M.! k)) ]
-
---     --       solutions = concat
---     --         [ solve (keys M.! k) (d+d') got' mis'
---     --          | (k,d') <- traceShow (p,d,gotten,missing,reachable,f) $ reachable
---     --          , let got' = k : gotten'
---     --          , let mis' = L.delete k missing ]
-
-
--- part1 :: Maze -> M.Map Char (Maybe Int)
--- part1 m@Maze{..} = M.fromList
---   [ (c,n) | (c,p) <- M.assocs keys ++ map (\(x,y)->(y,x)) (M.assocs doors)
---           , let n = dist p ]
---   where
---     f = addKey 'a' (emptyFlood m)
---     Flood{..} = flood f entrance
---     dist p = f_dists M.!? p
-
--- floodKeys = f_keys
