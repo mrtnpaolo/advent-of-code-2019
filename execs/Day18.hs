@@ -15,9 +15,13 @@ import Debug.Trace
 main :: IO ()
 main =
   do m <- parse <$> getRawInput 18 -- readFile "inputs/input18-test02" -- getRawInput 18
-     let sol = findOneSolution m (entrance m,keys m)
-     print `mapM_` sol
-     print (sum (map snd sol))
+     -- let sol = findOneSolution m (entrance m,keys m)
+     -- print `mapM_` sol
+     -- print (sum (map snd sol))
+     let sols = findAllSolutions 3258 m (entrance m,keys m)
+         lens = map (sum . map snd) sols
+     print `mapM_` lens
+     putStr $ "SHORTEST: " ++ show (head (L.sort lens))
 
 findOneSolution :: Maze -> Point -> [(Point,Int)]
 findOneSolution m (pos,miss) =
@@ -26,11 +30,18 @@ findOneSolution m (pos,miss) =
     _      -> step : findOneSolution m next
   where
     step@(next,_) = pick (flood m (pos,miss))
-    pick pts =
-      case (filter (\((c,_),_) -> (keyLocs m M.! c) `elem` miss) pts) of
-        [x] -> x
-        [_,x] -> x
-        (x:_) -> x
+    pick pts = head pts 
+      -- case (filter (\((c,_),_) -> (keyLocs m M.! c) `elem` miss) pts) of
+      --   [x] -> x
+      --   [_,x] -> x
+      --   (x:_) -> x
+
+findAllSolutions :: Int -> Maze -> Point -> [ [(Point,Int)] ]
+findAllSolutions bound _ _ | bound < 0 = traceShow "bailing" []
+findAllSolutions bound m (pos,miss) = 
+  case flood m (pos,miss) of
+    [] -> [ [] ]
+    ks -> [ (next,d) : sol | (next,d) <- ks, sol <- findAllSolutions (bound-d) m next ]
 
 type Coord = (Int,Int)
 type Tile = Char
