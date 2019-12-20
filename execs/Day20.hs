@@ -16,22 +16,22 @@ import Text.Printf
 main :: IO ()
 main =
   do putStrLn "Day20"
-     m <- parse <$> readFile "inputs/input20-test01-23"
+     -- m <- parse <$> readFile "inputs/input20-test01-23"
      -- m <- parse <$> readFile "inputs/input20-test02-58"
-     -- m <- parse <$> getRawInput 20
+     m <- parse <$> getRawInput 20
      putStr (showMaze m)
      printf "insidePortals: %s\n" $ show (insidePortals m)
      printf "outsidePortals: %s\n" $ show (outsidePortals m)
      printf "raw map is %d tiles\ncorridors run a length of %d\n" (length (mazeChars m)) (length (corridors m))
      let entrance = outsidePortalsLoc m M.! "AA"
-     printf "reachable from AA %s: %s\n" (show entrance) (show $ reachablePortals m entrance)
+     -- printf "reachable from AA %s: %s\n" (show entrance) (show $ map (bimap (portalName m) id) $ reachablePortals m entrance)
 
-     print $ map (bimap (portalName m) id) $ f m
+     print $ head $ filter (("ZZ" ==) . fst) $ map (bimap (portalName m) id) $ shortest m
 
 portalName :: Maze -> Coord -> String
 portalName Maze{..} p
   | Just name <- outsidePortals M.!? p = name
-  | Just name <- insidePortals  M.!? p = name
+  | Just name <- insidePortals  M.!? p = map toLower name
   | otherwise = error "not a portal"
 
 type Coord = (Int,Int)
@@ -54,13 +54,17 @@ data Maze = Maze
 
 data Side = Out | In deriving (Show, Eq, Ord)
 
--- f :: Maze -> ??
-f m@Maze{..} = tail $ dfsOn repr next begin
+shortest :: Maze -> [(Coord,Int)]
+shortest m@Maze{..} = tail $ bfsOn repr next begin
   where
     entrance = outsidePortalsLoc M.! "AA"
     begin = (entrance,0)
-    repr (p,_) = p
-    next (p,d) = catMaybes [ (\a -> (a,d+d')) <$> teleport m q | (q,d') <- reachablePortals m p ]
+    repr (p,d) = (p,d)
+    next (p,d) = catMaybes
+      [ if outsidePortalsLoc M.! "ZZ" == q
+        then Just (q,d+d')
+        else (\a -> (a,d+1+d')) <$> teleport m q
+      | (q,d') <- reachablePortals m p ]
 
 teleport :: Maze -> Coord -> Maybe Coord
 teleport Maze{..} p
@@ -117,7 +121,7 @@ parse raw = Maze { mazeChars = mazeChars, w = w, h = h
         ns = [ (x,y) | x <- [hxm..hxM], let y = hym-1 ]
         ss = [ (x,y) | x <- [hxm..hxM], let y = hyM+1 ]
         ws = [ (x,y) | let x = hxm-1, y <- [hym..hyM] ]
-        es = [ (x,y) | let x = hxM-1, y <- [hym..hyM] ]
+        es = [ (x,y) | let x = hxM+1, y <- [hym..hyM] ]
 
     outsidePortals = concat $
       [ [ (p,name) | p <- ns, '.' ==  mazeChars M.! p, let name = findName N p ]
