@@ -5,6 +5,7 @@ import Advent
 import Advent.Search
 import Data.Char
 import Data.Maybe
+import Data.Bifunctor
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
@@ -15,8 +16,8 @@ import Text.Printf
 main :: IO ()
 main =
   do putStrLn "Day20"
-     -- m <- parse <$> readFile "inputs/input20-test01-23"
-     m <- parse <$> readFile "inputs/input20-test02-58"
+     m <- parse <$> readFile "inputs/input20-test01-23"
+     -- m <- parse <$> readFile "inputs/input20-test02-58"
      -- m <- parse <$> getRawInput 20
      putStr (showMaze m)
      printf "insidePortals: %s\n" $ show (insidePortals m)
@@ -24,6 +25,14 @@ main =
      printf "raw map is %d tiles\ncorridors run a length of %d\n" (length (mazeChars m)) (length (corridors m))
      let entrance = outsidePortalsLoc m M.! "AA"
      printf "reachable from AA %s: %s\n" (show entrance) (show $ reachablePortals m entrance)
+
+     print $ map (bimap (portalName m) id) $ f m
+
+portalName :: Maze -> Coord -> String
+portalName Maze{..} p
+  | Just name <- outsidePortals M.!? p = name
+  | Just name <- insidePortals  M.!? p = name
+  | otherwise = error "not a portal"
 
 type Coord = (Int,Int)
 type Portal = String
@@ -43,6 +52,22 @@ data Maze = Maze
 
 -- Graph
 
+data Side = Out | In deriving (Show, Eq, Ord)
+
+-- f :: Maze -> ??
+f m@Maze{..} = tail $ dfsOn repr next begin
+  where
+    entrance = outsidePortalsLoc M.! "AA"
+    begin = (entrance,0)
+    repr (p,_) = p
+    next (p,d) = catMaybes [ (\a -> (a,d+d')) <$> teleport m q | (q,d') <- reachablePortals m p ]
+
+teleport :: Maze -> Coord -> Maybe Coord
+teleport Maze{..} p
+  | Just name <- outsidePortals M.!? p = insidePortalsLoc  M.!? name
+  | Just name <- insidePortals  M.!? p = outsidePortalsLoc M.!? name
+  | otherwise = error "not a portal"
+
 reachablePortals :: Maze -> Coord -> [(Coord,Int)]
 reachablePortals m@Maze{..} p
   | p `M.notMember` insidePortals && p `M.notMember` outsidePortals = error "non-portal coordinate"
@@ -58,6 +83,7 @@ isPortal Maze{..} p = isOutsidePortal <|> isInsidePortal
   where
     isOutsidePortal = outsidePortals M.!? p
     isInsidePortal  = insidePortals M.!? p
+
 -- Parsing
 
 parse :: String -> Maze
