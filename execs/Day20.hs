@@ -4,10 +4,12 @@ module Main (main) where
 import Advent
 import Advent.Search
 import Data.Char
+import Data.Maybe
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import Control.Arrow ((***), (&&&))
+import Control.Applicative
 import Text.Printf
 
 main :: IO ()
@@ -20,9 +22,8 @@ main =
      printf "insidePortals: %s\n" $ show (insidePortals m)
      printf "outsidePortals: %s\n" $ show (outsidePortals m)
      printf "raw map is %d tiles\ncorridors run a length of %d\n" (length (mazeChars m)) (length (corridors m))
-
-cardinals :: Coord -> [Coord]
-cardinals (x,y) = [(x,y-1),(x+1,y),(x,y+1),(x-1,y)]
+     let entrance = outsidePortalsLoc m M.! "AA"
+     printf "reachable from AA %s: %s\n" (show entrance) (show $ reachablePortals m entrance)
 
 type Coord = (Int,Int)
 type Portal = String
@@ -39,6 +40,25 @@ data Maze = Maze
   , outsidePortalsLoc :: M.Map Portal Coord
   , corridors :: S.Set Coord
   } deriving (Show)
+
+-- Graph
+
+reachablePortals :: Maze -> Coord -> [(Coord,Int)]
+reachablePortals m@Maze{..} p
+  | p `M.notMember` insidePortals && p `M.notMember` outsidePortals = error "non-portal coordinate"
+  | otherwise = filter (isJust . isPortal m . fst) flood
+  where
+    begin = (p,0)
+    repr = fst
+    next (p,d) = [ (q,d+1) | q <- cardinals p, q `S.member` corridors ]
+    flood = tail (bfsOn repr next begin) -- tail to not return the starting portal
+
+isPortal :: Maze -> Coord -> Maybe String
+isPortal Maze{..} p = isOutsidePortal <|> isInsidePortal
+  where
+    isOutsidePortal = outsidePortals M.!? p
+    isInsidePortal  = insidePortals M.!? p
+-- Parsing
 
 parse :: String -> Maze
 parse raw = Maze { mazeChars = mazeChars, w = w, h = h
@@ -99,3 +119,6 @@ showMaze Maze{..} = unlines $
 
 minMax :: [Int] -> (Int, Int)
 minMax = L.minimum &&& L.maximum
+
+cardinals :: Coord -> [Coord]
+cardinals (x,y) = [(x,y-1),(x+1,y),(x,y+1),(x-1,y)]
