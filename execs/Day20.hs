@@ -17,7 +17,8 @@ main =
      m <- parse <$> readFile "inputs/input20-test02-58"
      -- m <- parse <$> getRawInput 20
      putStr (showMaze m)
-     print (portals m)
+     printf "insidePortals: %s\n" $ show (insidePortals m)
+     printf "outsidePortals: %s\n" $ show (outsidePortals m)
      printf "raw map is %d tiles\ncorridors run a length of %d\n" (length (mazeChars m)) (length (corridors m))
 
 cardinals :: Coord -> [Coord]
@@ -32,15 +33,19 @@ data Maze = Maze
   { mazeChars :: M.Map Coord Char
   , w :: Int
   , h :: Int
-  , portals     :: M.Map Coord Portal
-  , portalsLocs :: M.Map Portal Coord
+  , insidePortals     :: M.Map Coord Portal
+  , outsidePortals    :: M.Map Coord Portal
+  , insidePortalsLoc  :: M.Map Portal Coord
+  , outsidePortalsLoc :: M.Map Portal Coord
   , corridors :: S.Set Coord
   } deriving (Show)
 
 parse :: String -> Maze
 parse raw = Maze { mazeChars = mazeChars, w = w, h = h
-                 , portals = portals
-                 , portalsLocs = M.empty
+                 , insidePortals  = M.fromList insidePortals
+                 , outsidePortals = M.fromList outsidePortals
+                 , insidePortalsLoc  = M.fromList [ (name,c) | (c,name) <- insidePortals ]
+                 , outsidePortalsLoc = M.fromList [ (name,c) | (c,name) <- outsidePortals ]
                  , corridors = corridors }
   where
     mazeChars = M.fromList [ ((x,y),c) | (y,xs) <- zip [-2,-1..] (lines raw)
@@ -68,12 +73,21 @@ parse raw = Maze { mazeChars = mazeChars, w = w, h = h
         ws = [ (x,y) | let x = hxm-1, y <- [hym..hyM] ]
         es = [ (x,y) | let x = hxM-1, y <- [hym..hyM] ]
 
+    outsidePortals = concat $
+      [ [ (p,name) | p <- ns, '.' ==  mazeChars M.! p, let name = findName N p ]
+      , [ (p,name) | p <- es, '.' ==  mazeChars M.! p, let name = findName E p ]
+      , [ (p,name) | p <- ss, '.' ==  mazeChars M.! p, let name = findName S p ]
+      , [ (p,name) | p <- ws, '.' ==  mazeChars M.! p, let name = findName W p ] ]
+      where
+        ns = [ (x,y) | x <- [0..w-1], let y = 0     ]
+        ss = [ (x,y) | x <- [0..w-1], let y = h-1   ]
+        ws = [ (x,y) | let x = 0,     y <- [0..h-1] ]
+        es = [ (x,y) | let x = w-1,   y <- [0..h-1] ]
+
     findName N (x,y) = map (mazeChars M.!) [ (x,y-2), (x,y-1) ]
     findName E (x,y) = map (mazeChars M.!) [ (x+1,y), (x+2,y) ]
     findName S (x,y) = map (mazeChars M.!) [ (x,y+1), (x,y+2) ]
     findName W (x,y) = map (mazeChars M.!) [ (x-2,y), (x-1,y) ]
-
-    portals = M.fromList insidePortals
 
     corridors = S.fromList [ p | (p,'.') <- M.assocs mazeChars ]
 
