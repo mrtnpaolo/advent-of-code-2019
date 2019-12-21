@@ -8,11 +8,18 @@ import Data.Char
 main :: IO ()
 main =
   do mem <- getIntCode 21
-     let (outs,sol) = span (<256) $ run mem (encode (p ++ ["WALK"]))
-     putStrLn (ascii outs)
-     print `mapM_` sol
+     exec mem p "WALK"
+     exec mem p' "RUN"
 
-p :: [String]
+  where
+
+    exec mem program command =
+      do let (outs,sol) = span (<256) $ run mem (encode (program ++ [command]))
+         putStrLn (ascii outs)
+         print `mapM_` sol
+
+p, p' :: [String]
+
 p =
   [ "NOT A J"
   , "NOT B T"
@@ -20,6 +27,18 @@ p =
   , "NOT C T"
   , "OR T J"
   , "AND D J" ]
+
+p' =
+  [ "NOT A J"
+  , "OR  D T"
+  , "AND H T"
+  , "OR  T J"
+  , "NOT A T"
+  , "NOT T T"
+  , "AND B T"
+  , "AND C T"
+  , "NOT T T"
+  , "AND T J" ]
 
 ascii :: [Int] -> String
 ascii = map chr
@@ -57,3 +76,19 @@ j |= t OR T J
 j &= d AND D J
 
 -}
+
+-- 012345678
+-- ABCDEFGHI
+-- ...#...#.
+-- #...#...#
+-- ...##...#
+-- NOT A J
+-- OR  D T
+-- AND H T
+-- OR  T J
+-- NOT A T
+-- NOT T T
+-- AND B T
+-- AND C T
+-- NOT T T
+-- AND T J
