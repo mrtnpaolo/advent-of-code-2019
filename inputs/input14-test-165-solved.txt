@@ -1,0 +1,80 @@
+input (one fuel should be 13312 ore)
+
+157 ORE => 5 NZVS
+165 ORE => 6 DCFZ
+44 XJWVT, 5 KHKGT, 1 QDVJ, 29 NZVS, 9 GPVTF, 48 HKGWZ => 1 FUEL
+12 HKGWZ, 1 GPVTF, 8 PSHF => 9 QDVJ
+179 ORE => 7 PSHF
+177 ORE => 5 HKGWZ
+7 DCFZ, 7 PSHF => 2 XJWVT
+165 ORE => 2 GPVTF
+3 DCFZ, 7 NZVS, 5 HKGWZ, 10 PSHF => 8 KHKGT
+
+157 ORE => 5 N
+165 ORE => 6 D
+179 ORE => 7 P
+177 ORE => 5 H
+165 ORE => 2 G
+ 7 D, 7 P => 2 X
+12 H, 1 G, 8 P => 9 Q
+ 3 D, 7 N, 5 H, 10 P => 8 K
+44 X, 5 K, 1 Q, 29 N, 9 G, 48 H => 1 FUEL
+
+basic chemicals: least amount producible, ore cost
+
+     least ore
+   g 2     165
+   n 5     157
+   h 5     177
+   d 6     165
+   p 7     179
+
+compound chemicals: least amount producible, cost in basic chemicals
+
+     least formula
+   X 2     7 d + 7 p
+   K 8     7 n + 5 h + 3 d + 10 p
+   Q 9     12 h + 1 g + 8 p
+
+FUEL 1     44 X + 5 K + 1 Q + 29 n + 9 g + 48 h
+          \________________/ \_________________/
+              compounds            simple
+
+ FUEL = compounds + simple
+
+      = 44 X + 5 K + 1 Q  + 29 n + 9 g + 48 h
+
+discretize each compound chemical:
+
+      = 22 (2 X) + 1 (8 K) + 1 (9 Q) + 29 n + 9 g + 48 h
+      = 22 (7 d + 7 p) + 1 (7 n + 5 h + 3 d + 10 p) + (12 h + 1 g + 8 p) + 29 n + 9 g + 48 h
+      = 157 d + 10 g + 65 h + 36 n + 172 p
+
+base chem                            # needed   unitary cost   total
+
+    d   157 `divMod` 6 = (26,1)   =>   27      *    165 ore   = 27*165 = 4455
+    g    10 `divMod` 2 = ( 5,0)   =>    5      *    165 ore   =  5*165 =  825
+    h    65 `divMod` 5 = (13,0)   =>   13      *    177 ore   = 13*177 = 2301
+    n    36 `divMod` 5 = ( 7,1)   =>    8      *    157 ore   =  8*157 = 1256
+    p   172 `divMod` 7 = (24,4)   =>   25      *    179 ore   = 25*179 = 4475
+
+4455+825+2301+1256+4475
+
+----
+
+FUEL = compounds + simple
+      = 44 X + 5 K + 1 Q  + 29 n + 9 g + 48 h
+      = 44*(7 d + 7 p) + 5*(7 n + 5 h + 3 d + 10 p) + 1*(12 h + 1 g + 8 p) + 29 n + 9 g + 48 h
+        ^^^^^^^   ^^^       ^^^   ^^^   ^^^   ^^^^       ^^^^   ^^^   ^^^    ^^^^   ^^^   ^^^^
+      = (44*7 + 5*3) d + (44*7 + 5*10 + 8) p + (5*7 + 29) n + (5*5 + 12 + 48) h + (1+9) g
+      = 323 d + 366 p + 64 n + 85 h + 10 g
+
+base chem                            # needed   unitary cost   total
+
+    d   323 `divMod` 6 = (53,5)   =>   54      *    165 ore   = 54*165 = 8910
+    p   366 `divMod` 7 = (52,2)   =>   53      *    179 ore   = 53*179 = 9487
+    n    64 `divMod` 5 = (12,4)   =>   13      *    157 ore   = 13*157 = 2041
+    h    85 `divMod` 5 = (17,0)   =>   17      *    177 ore   = 17*177 = 3009
+    g    10 `divMod` 2 = ( 5,0)   =>    5      *    165 ore   =  5*165 =  825
+
+8910+9487+2041+3009+825 = 24272 by (24272-13312=)10960, i.e. half.
