@@ -1,111 +1,64 @@
-{-# OPTIONS_GHC -Wno-unused-imports #-}
-{-# LANGUAGE RecordWildCards, DeriveFunctor, DeriveFoldable #-}
+{-# OPTIONS_GHC -Wno-unused-imports -Wno-unused-matches -Wno-unused-top-binds -Wno-unused-local-binds #-}
+{-# LANGUAGE ViewPatterns, TypeApplications, ScopedTypeVariables #-}
 module Main (main) where
 
 import Advent
 import qualified Data.List as L
 import Data.List.Split
-import Data.Foldable
-import Data.Bifunctor
-import Data.Ord (comparing)
-import Data.Function (on)
 import Data.Map (Map, (!), (!?))
 import qualified Data.Map as M
-import Data.Tree (Tree(..))
-import qualified Data.Tree as T
-import Debug.Trace
+import Control.Monad
+import Data.Maybe
+import Data.IORef
+import System.IO.Unsafe (unsafePerformIO)
+
+newtype Chem = Chem String deriving (Eq, Ord)
+type Comp = (Int,Chem)
+type Reaction = ([Comp],Comp)
 
 main :: IO ()
 main =
-  do parsed <- parse . reverse . lines . clean <$> getRawInput 14
-     let amounts = M.fromList [ (name,amount) | (name,(amount,_)) <- parsed ]
-     let rules   = M.fromList [ (name,rule) | (name,(_,rule)) <- parsed ]
-     print amounts
-     (\name ingredients -> putStr name >> putChar '\t' >> print ingredients) `M.traverseWithKey` rules
-     let e = expr rules
-     print e
-     print (isSimple rules e)
-     let s = simpl amounts e
-     print s
-     print (all (isSimple rules) s)
-     print (part1 amounts rules s)
+  do recs :: [Reaction] <- parse <$> getRawInput 14
+     genEmojis recs
+     print `mapM_` recs
+     -- void $ M.traverseWithKey (\k v -> print (k,v)) (f recs)
+     let depths = order recs
+     print `mapM_` depths
   where
-    clean = map (overwrite ",=>" ' ')
+    parse = map (go id . words) . lines . map (\case c | c `elem` "=>," -> ' ' | otherwise -> c)
       where
-        overwrite these replacement c | c `elem` these = replacement
-                                      | otherwise      = c
-    parse = map (parseLine . chunksOf 2 . reverse . words)
-    parseLine :: [[String]] -> (String,(Int,[(String,Int)]))
-    parseLine ([chem,least]:srcs) = (chem,(read least,map (\[c,n] -> (c,read n)) (reverse srcs)))
+        go srcs [read -> n, dst]         = (srcs [],(n,Chem dst))
+        go srcs ((read -> n) : src : xs) = go (((n,Chem src):) . srcs) xs
+        go _ _                           = undefined
 
-part1 :: Amounts -> Rules -> [Expr String] -> Int
-part1 amounts rules xs =
-  sum [ n * ore
-      | Expr name w [] <- xs
-      , let least = amounts ! name
-      , let Just n = L.findIndex (>= w) [ least * i | i <- [0..] ]
-      , let [("ORE",ore)] = rules ! name
-      ]
-
-type Amounts = Map String Int
-
-type Rule = (String,Int)
-type Rules = Map String [Rule]
-
-data Expr a = Expr a Int [Expr a]
-  deriving (Show, Functor, Foldable)
-
-expr :: Rules -> Expr String
-expr rules = go "FUEL" 1
+order :: [Reaction] -> [(Chem,Int)]
+order xs = L.sortOn (negate . snd) . M.toList $ steps
   where
-    go name want =
-      case (rules !? name) of
-        Nothing -> Expr name want []
-        Just recipe -> Expr name want [ go n w | (n,w) <- recipe, n /= "ORE" ]
+    recipes = M.fromList [ (dst,(n,srcs)) | (srcs,(n,dst)) <- xs ]
+    steps = depth <$> recipes
+    depth (_,srcs) = maximum [ depthOf src | (_,src) <- srcs ] + 1
+    depthOf x = M.findWithDefault (0::Int) x steps
 
-isSimple :: Rules -> Expr String -> Bool
-isSimple rules = all f
+
+
+-- hack to show recognizable images near each Chem when printed out
+
+instance Show Chem where
+  showsPrec _ (Chem xs) = showString xs . showString " " . showString (emoji xs)
+
+emojis :: IORef (Map String String)
+emojis = unsafePerformIO (newIORef M.empty)
+
+emoji :: String -> String -- ❌ cross mark Unicode: U+274C
+emoji xs = unsafePerformIO $ M.findWithDefault "\x274C" xs <$> readIORef emojis
+
+genEmojis :: [Reaction] -> IO ()
+genEmojis reacts =
+  do writeIORef emojis (M.fromList assocs)
   where
-    f name | [("ORE",_)] <- rules ! name = True | otherwise = False
+    chems :: [String]
+    chems = (\(srcs,(_,Chem dst)) -> dst : ((\(_,Chem src) -> src) <$> srcs)) =<< reacts
+    predictable = "ORE" : "FUEL" : (L.nub chems L.\\ ["ORE","FUEL"])
+    strs = map (:[]) ['\x1F34F'..] -- 🍏 green apple Unicode: U+1F34F
+    assocs = zip predictable strs
 
-simpl :: Amounts -> Expr String -> [Expr String]
-simpl amounts = go
-  where
-    go :: Expr String -> [Expr String]
-    go (Expr name want xs) = summands'
-      where
-        (simples,compounds) = L.partition isLeaf xs
-
-        simplified = [ Expr baseName ((cap compoundName w)*w') xs
-                     | compound@(Expr compoundName w _) <- compounds, Expr baseName w' xs <- go compound ]
-          where
-            cap name w = i
-              where
-                least = amounts ! name
-                Just i = find (\i -> i * least >= w) [0..]
-
-        summands = L.sortOn exprName (simples ++ simplified)
-        groups = L.groupBy ((==) `on` exprName) summands
-        summands' = map squish groups
-
-        squish = L.foldl1' (\(Expr n w []) (Expr _ w' []) -> Expr n (w+w') [])
-    -- go (Expr name want xs) = summands'
-    --   where
-    --     (leaves,branches) = L.partition isLeaf xs
-    --     simplified = [ Expr n (w*w') xs | branch@(Expr _ w' _) <- branches, Expr n w xs <- go branch ]
-
-    --     summands = L.sortOn exprName (leaves ++ simplified)
-    --     groups = L.groupBy ((==) `on` exprName) summands
-    --     summands' = map squish groups
-
-    --     squish = L.foldl1' (\(Expr n w []) (Expr _ w' []) -> Expr n (w+w') [])
-
-allLeaves :: [Expr a] -> Bool
-allLeaves = all isLeaf
-
-isLeaf :: Expr a -> Bool
-isLeaf (Expr _ _ []) = True
-isLeaf _ = False
-
-exprName :: Expr String -> String
-exprName (Expr name _ _) = name
