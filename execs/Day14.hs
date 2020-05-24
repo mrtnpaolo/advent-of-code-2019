@@ -11,6 +11,7 @@ import Control.Monad
 import Data.Maybe
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
+import Debug.Trace
 
 newtype Chem = Chem String deriving (Eq, Ord)
 type Comp = (Int,Chem)
@@ -55,7 +56,7 @@ oreNeededFor recips ordered (n,goalChem) = amounts ! (Chem "ORE")
   where
     amounts = L.foldl' go (M.singleton goalChem n) ordered
     go :: Map Chem Int -> Chem -> Map Chem Int
-    go allNeeds chem = allNeeds'
+    go allNeeds chem = traceShow (chem,allNeeds') allNeeds'
       where
         allNeeds' = M.unionWith (+) newNeeds newNeeds'
         newNeeds  = M.delete chem allNeeds -- remove the current processed chem
