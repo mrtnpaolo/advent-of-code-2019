@@ -36,6 +36,9 @@ main =
 
      let ordered = map fst depths
      print $ oreNeededFor recips ordered (1,Chem "FUEL")
+
+     let f n = oreNeededFor recips ordered (n,Chem "FUEL") <= 1000000000000
+     print $ binSearch f 1
   where
     parse = map (go id . words) . lines . map (\case c | c `elem` "=>," -> ' ' | otherwise -> c)
       where
@@ -56,7 +59,7 @@ oreNeededFor recips ordered (n,goalChem) = amounts ! (Chem "ORE")
   where
     amounts = L.foldl' go (M.singleton goalChem n) ordered
     go :: Map Chem Int -> Chem -> Map Chem Int
-    go allNeeds chem = traceShow (chem,allNeeds') allNeeds'
+    go allNeeds chem = allNeeds' -- traceShow (chem,allNeeds') allNeeds'
       where
         allNeeds' = M.unionWith (+) newNeeds newNeeds'
         newNeeds  = M.delete chem allNeeds -- remove the current processed chem
@@ -67,6 +70,20 @@ oreNeededFor recips ordered (n,goalChem) = amounts ! (Chem "ORE")
 
 divUp :: Integral a => a -> a -> a
 x `divUp` y = (x + y - 1) `div` y
+
+binSearch :: (Int -> Bool) -> Int -> Int
+binSearch pred lo = search acceptable (2*acceptable)
+  where
+    acceptable = go lo
+    go n | pred (2*n) = go (2*n)
+         | otherwise  = n
+
+    search lo hi
+      | lo+1 == hi = lo
+      | pred mid   = search mid hi
+      | otherwise  = search lo mid
+      where
+        mid = lo + (hi - lo) `div` 2
 
 -- hack to show recognizable images near each Chem when printed out
 
