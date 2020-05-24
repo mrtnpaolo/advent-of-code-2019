@@ -15,15 +15,26 @@ import System.IO.Unsafe (unsafePerformIO)
 newtype Chem = Chem String deriving (Eq, Ord)
 type Comp = (Int,Chem)
 type Reaction = ([Comp],Comp)
+type Recipes = Map Chem (Int,[Comp])
 
 main :: IO ()
 main =
-  do recs :: [Reaction] <- parse <$> getRawInput 14
-     genEmojis recs
-     print `mapM_` recs
-     -- void $ M.traverseWithKey (\k v -> print (k,v)) (f recs)
-     let depths = order recs
+  do reacs :: [Reaction] <- parse <$> getRawInput 14
+     genEmojis reacs
+     putStrLn "reacs:"
+     print `mapM_` reacs
+     -- void $ M.traverseWithKey (\k v -> print (k,v)) (f reacs)
+
+     let recips  = M.fromList [ (dst,(n,srcs)) | (srcs,(n,dst)) <- reacs ]
+     putStrLn "recips:"
+     void $ M.traverseWithKey (\k v -> print (k,v)) recips
+
+     let depths = order reacs
+     putStrLn "depths:"
      print `mapM_` depths
+
+     let ordered = map fst depths
+     print $ oreNeededFor recips ordered (1,Chem "FUEL")
   where
     parse = map (go id . words) . lines . map (\case c | c `elem` "=>," -> ' ' | otherwise -> c)
       where
@@ -39,7 +50,22 @@ order xs = L.sortOn (negate . snd) . M.toList $ steps
     depth (_,srcs) = maximum [ depthOf src | (_,src) <- srcs ] + 1
     depthOf x = M.findWithDefault (0::Int) x steps
 
+oreNeededFor :: Recipes -> [Chem] -> Comp -> Int
+oreNeededFor recips ordered (n,goalChem) = amounts ! (Chem "ORE")
+  where
+    amounts = L.foldl' go (M.singleton goalChem n) ordered
+    go :: Map Chem Int -> Chem -> Map Chem Int
+    go allNeeds chem = allNeeds'
+      where
+        allNeeds' = M.unionWith (+) newNeeds newNeeds'
+        newNeeds  = M.delete chem allNeeds -- remove the current processed chem
+        newNeeds' = M.fromList [ (neededChem,n*m) | (m,neededChem) <- directNeeds ]
+        (amountMade,directNeeds) = recips M.! chem
+        n = neededSoFar `divUp` amountMade
+        neededSoFar = M.findWithDefault 0 chem allNeeds
 
+divUp :: Integral a => a -> a -> a
+x `divUp` y = (x + y - 1) `div` y
 
 -- hack to show recognizable images near each Chem when printed out
 
